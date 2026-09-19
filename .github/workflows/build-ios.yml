@@ -1,8 +1,6 @@
 name: Build iOS IPA
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -39,6 +37,47 @@ jobs:
           if [ ! -d "src-tauri/gen/apple" ]; then
             npx tauri ios init
           fi
+
+      - name: Configure iOS Background Audio and AVAudioSession
+        run: |
+          # 1. Update all Info.plist files with UIBackgroundModes = ["audio"]
+          for PLIST in $(find src-tauri/gen/apple -name "Info.plist"); do
+            echo "Configuring UIBackgroundModes in $PLIST"
+            /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST" 2>/dev/null || true
+          done
+
+          # 2. Inject AVFoundation and AVAudioSession.setCategory(.playback) into AppDelegate.swift
+          python3 -c "
+import glob, re
+
+files = glob.glob('src-tauri/gen/apple/**/AppDelegate.swift', recursive=True)
+for fpath in files:
+    with open(fpath, 'r') as f:
+        code = f.read()
+
+    if 'AVFoundation' not in code:
+        code = 'import AVFoundation\n' + code
+
+    session_code = '''
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setActive(true)
+        } catch {
+            print(\"Failed to set AVAudioSession category: \(error)\")
+        }
+'''
+    if 'setCategory' not in code:
+        match = re.search(r'func application\([^{]+\{', code)
+        if match:
+            end_pos = match.end()
+            code = code[:end_pos] + session_code + code[end_pos:]
+
+    with open(fpath, 'w') as f:
+        f.write(code)
+    print(f'Successfully injected AVAudioSession into {fpath}')
+"
 
       - name: Build iOS App (Unsigned)
         run: |

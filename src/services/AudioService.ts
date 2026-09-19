@@ -29,9 +29,29 @@ export class AudioService {
     // Подписываемся на события аудио
     this.audio.addEventListener('timeupdate', () => {
       usePlayerStore.getState().setProgress(this.audio.currentTime);
+      if (Math.floor(this.audio.currentTime) % 4 === 0) {
+        this.updateMediaSessionPosition();
+      }
+    });
+
+    this.audio.addEventListener('play', () => {
+      if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    });
+
+    this.audio.addEventListener('pause', () => {
+      if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    });
+
+    this.audio.addEventListener('durationchange', () => {
+      this.updateMediaSessionPosition();
     });
 
     this.audio.addEventListener('seeked', () => {
+      this.updateMediaSessionPosition();
       const state = usePlayerStore.getState();
       if (state.isPlaying && this.audio.paused) {
         this.resumeAudioContext();
@@ -43,6 +63,39 @@ export class AudioService {
         }
       }
     });
+
+    // Регистрируем обработчики управления для экрана блокировки / шторки уведомлений / гарнитуры
+    if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('play', () => {
+          usePlayerStore.getState().togglePlayPause();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          usePlayerStore.getState().togglePlayPause();
+        });
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          usePlayerStore.getState().prevTrack();
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          usePlayerStore.getState().nextTrack();
+        });
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined) {
+            usePlayerStore.getState().setProgress(details.seekTime);
+          }
+        });
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+          const skipTime = details.seekOffset || 10;
+          usePlayerStore.getState().setProgress(Math.max(this.audio.currentTime - skipTime, 0));
+        });
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+          const skipTime = details.seekOffset || 10;
+          usePlayerStore.getState().setProgress(Math.min(this.audio.currentTime + skipTime, this.audio.duration || 0));
+        });
+      } catch (e) {
+        console.warn('MediaSession action handler registration error:', e);
+      }
+    }
 
     this.audio.addEventListener('stalled', () => {
       const state = usePlayerStore.getState();
@@ -117,9 +170,11 @@ export class AudioService {
           this.currentLoadId++;
           this.audio.pause();
           this.audio.src = '';
+          this.updateMediaSession(null, false);
           return;
         }
         this._loadTrack(currentTrack, state.isPlaying);
+        this.updateMediaSession(currentTrack, state.isPlaying);
         state.addToHistory(currentTrack);
 
         // Infinite Wave: if playing wave tracks and near end of queue, fetch next batch from Yandex Wave
@@ -135,6 +190,9 @@ export class AudioService {
 
       // Play/Pause изменилось
       if (!trackChanged && state.isPlaying !== prevState.isPlaying) {
+        if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = state.isPlaying ? 'playing' : 'paused';
+        }
         if (state.isPlaying && state.currentTrackIndex >= 0) {
           if (!this.audio.src || this.audio.src === window.location.href) {
             if (hasCustomEq) {
@@ -511,6 +569,10 @@ export class AudioService {
         console.warn('Не удалось загрузить обложку для Discord RPC:', uploadError);
       }
       
+      const currentTrack = usePlayerStore.getState().queue[usePlayerStore.getState().currentTrackIndex];
+      if (currentTrack && currentTrack.id === trackId) {
+        this.updateMediaSession(currentTrack, usePlayerStore.getState().isPlaying);
+      }
     } catch (error) {
       console.error("Ошибка при установке кастомной обложки:", error);
     }
@@ -641,6 +703,66 @@ export class AudioService {
         playPromise.catch(e => {
           if (e.name !== 'AbortError') console.error(e);
         });
+      }
+    }
+    this.updateMediaSession(track, shouldPlay);
+  }
+
+  public updateMediaSession(track: Track | null, isPlaying: boolean = true) {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+    if (!track) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+      return;
+    }
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+    const rawCover = track.customCoverPath || track.originalCoverUrl || '';
+    const artworks: MediaImage[] = [];
+
+    if (rawCover) {
+      // Ensure absolute URL or data URL
+      const finalSrc = rawCover.startsWith('/') && !rawCover.startsWith('//')
+        ? window.location.origin + rawCover
+        : rawCover;
+
+      artworks.push(
+        { src: finalSrc, sizes: '96x96', type: 'image/png' },
+        { src: finalSrc, sizes: '128x128', type: 'image/png' },
+        { src: finalSrc, sizes: '192x192', type: 'image/png' },
+        { src: finalSrc, sizes: '256x256', type: 'image/png' },
+        { src: finalSrc, sizes: '384x384', type: 'image/png' },
+        { src: finalSrc, sizes: '512x512', type: 'image/png' }
+      );
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title || 'Unknown Title',
+        artist: track.artist || 'Unknown Artist',
+        album: track.album || 'Aura',
+        artwork: artworks
+      });
+    } catch (e) {
+      console.warn('Failed to update MediaMetadata:', e);
+    }
+
+    this.updateMediaSessionPosition();
+  }
+
+  public updateMediaSessionPosition() {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+    if ('setPositionState' in navigator.mediaSession && !isNaN(this.audio.duration) && this.audio.duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: this.audio.duration,
+          playbackRate: this.audio.playbackRate || 1.0,
+          position: Math.min(Math.max(0, this.audio.currentTime), this.audio.duration)
+        });
+      } catch (e) {
+        // Ignored during seek / track transitions
       }
     }
   }
