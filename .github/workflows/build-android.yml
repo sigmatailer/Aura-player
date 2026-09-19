@@ -57,6 +57,7 @@ jobs:
 
       - name: Build Android APK
         run: |
+          sed -i '/org.gradle.java.home/d' src-tauri/gen/android/gradle.properties || true
           chmod +x src-tauri/gen/android/gradlew || true
           npx tauri android build --apk --target aarch64 armv7 --ci
 
