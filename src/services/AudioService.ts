@@ -141,8 +141,8 @@ export class AudioService {
         this.applyVolume(state.volume);
       }
       
-      // Sync EQ (only initialize if custom EQ is set and not on iOS)
-      const hasCustomEq = !isIOS && (state.eqBands.some(val => val !== 0) || state.eqPreAmp !== 0);
+      // Sync EQ
+      const hasCustomEq = state.eqBands.some(val => val !== 0) || state.eqPreAmp !== 0;
       if (hasCustomEq) {
         this.initEqualizer();
       }
@@ -251,9 +251,6 @@ export class AudioService {
   }
 
   public initEqualizer() {
-    // iOS WebKit immediately halts AudioContext in the background, which cuts off
-    // all audio if createMediaElementSource is connected. Keep standard AVPlayer playback on iOS.
-    if (isIOS) return;
     if (this.audioCtx) return;
     try {
       this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({

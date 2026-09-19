@@ -76,11 +76,11 @@ const BottomPlayer: React.FC = () => {
             <Maximize2 size={18} className="text-[var(--text-main)] drop-shadow-lg transition-transform hover:scale-110" />
           </div>
         </div>
-        <div className="flex flex-col justify-center min-w-0 pr-2 gap-0.5">
-          <span className="text-[var(--text-main)] text-[13.5px] md:text-sm font-semibold tracking-tight truncate hover:underline track-title leading-snug">
+        <div className="flex flex-col justify-center min-w-0 pr-2">
+          <span className="text-[var(--text-main)] text-[13.5px] md:text-sm font-semibold tracking-tight truncate hover:underline track-title leading-tight">
             {currentTrack.title}
           </span>
-          <div onClick={(e) => e.stopPropagation()} className="truncate">
+          <div onClick={(e) => e.stopPropagation()} className="truncate mt-1 flex items-center">
             <ArtistLinks 
               artist={currentTrack.artist} 
               className="text-[var(--text-secondary)] text-[12px] md:text-xs font-normal truncate transition-colors leading-tight"

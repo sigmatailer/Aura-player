@@ -258,10 +258,19 @@ const TopPlayer: React.FC = () => {
             >
               <Shuffle size={18} strokeWidth={2} />
             </button>
+            <button
+              onClick={() => document.dispatchEvent(new CustomEvent('toggle-eq'))}
+              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-95 transition-all cursor-pointer"
+              data-tooltip="Эквалайзер"
+              data-tooltip-pos="bottom"
+              title="Эквалайзер"
+            >
+              <SlidersHorizontal size={18} strokeWidth={1.75} />
+            </button>
           </div>
         </div>
 
-        {/* Volume Mixer & Equalizer - Hidden on mobile/iOS where hardware buttons control audio */}
+        {/* Volume Mixer - Hidden on mobile/iOS where hardware buttons control audio */}
         <div className="hidden md:flex items-center gap-2.5 sm:gap-3 w-full max-w-sm sm:max-w-md mx-auto md:mx-0 mt-0.5 md:mt-2">
           {/* Volume Control */}
           <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-full flex items-center px-3 sm:px-3.5 py-1.5 sm:py-2 gap-2 sm:gap-2.5 shadow-sm transition-all duration-300">
@@ -297,17 +306,6 @@ const TopPlayer: React.FC = () => {
               className="w-8 h-6 rounded-md bg-transparent border-0 flex items-center justify-center text-[11px] text-[var(--text-secondary)] font-bold shrink-0 text-center outline-none focus:text-[var(--text-main)] transition-colors"
             />
           </div>
-
-          {/* Equalizer Button */}
-          <button
-            onClick={() => document.dispatchEvent(new CustomEvent('toggle-eq'))}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 rounded-full border border-[var(--border-main)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)] active:scale-95 transition-all shadow-sm cursor-pointer"
-            data-tooltip="Эквалайзер"
-            data-tooltip-pos="bottom"
-            title="Эквалайзер"
-          >
-            <SlidersHorizontal size={16} strokeWidth={1.75} />
-          </button>
         </div>
       </div>
     </div>
