@@ -521,7 +521,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
   const isHomeState = !hasSearched && !isSearching && results.length === 0;
 
   return (
-    <div className={`w-full mx-auto h-full flex flex-col transition-all duration-500 ease-in-out ${isHomeState ? 'justify-center max-w-2xl' : 'pt-4 w-full'}`}>
+    <div className={`w-full mx-auto h-full flex flex-col overflow-x-hidden transition-all duration-500 ease-in-out ${isHomeState ? 'justify-center max-w-2xl' : 'pt-4 w-full'}`}>
       
       <div className={`relative z-50 flex flex-col gap-4 shrink-0 transition-all duration-500 ease-in-out ${isHomeState ? 'mb-0' : 'mb-6'}`}>
         <form onSubmit={handleSearch} className="relative w-full group z-50">
@@ -706,7 +706,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
         </div>
       </div>
 
-      <div className={`relative z-0 flex flex-col flex-1 overflow-y-auto scrollbar-hide pb-24 transition-opacity duration-500 ${isHomeState ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto'}`}>
+      <div className={`relative z-0 flex flex-col flex-1 overflow-y-auto overflow-x-hidden w-full min-w-0 scrollbar-hide pb-24 transition-opacity duration-500 ${isHomeState ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto'}`}>
         {errorMsg && (
           <div className="text-red-500 text-center py-4 bg-red-500/10 rounded-2xl border border-red-500/20 mb-4">{errorMsg}</div>
         )}
@@ -764,11 +764,11 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 animate={{ opacity: 1 }}
                 key={result.id}
                 onClick={() => handlePlayResult(result)}
-                className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border border-[var(--border-main)] cursor-pointer transition-all ${
+                className={`group flex items-center justify-between p-2.5 pr-3 mb-2 rounded-2xl border border-[var(--border-main)] cursor-pointer transition-all w-full min-w-0 box-border ${
                   isQueuedAndActive ? 'bg-[var(--bg-surface-hover)] border-[var(--border-main)]' : 'bg-transparent hover:bg-[var(--bg-surface-hover)]'
                 }`}
               >
-                <div className="flex items-center gap-4 flex-1">
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
                   <div className={`relative w-12 h-12 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] ${
                     isArtist ? 'rounded-full border border-white/10' : isTrack ? 'rounded-[10px]' : 'rounded-md shadow-md'
                   }`}>
@@ -800,7 +800,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col truncate">
+                  <div className="flex flex-col min-w-0 flex-1">
                     <span className={`font-medium text-[15px] truncate ${isQueuedAndActive ? 'text-[var(--accent)]' : 'text-[#cccccc] group-hover:text-[var(--text-main)]'}`}>
                       {result.title}
                     </span>
@@ -811,11 +811,11 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                           useArtistStore.getState().openArtist(result.author, null, 'modal');
                         }
                       }}
-                      className={`text-[13px] text-[var(--text-secondary)] truncate ${!isArtist ? 'hover:text-[var(--text-main)] hover:underline cursor-pointer' : ''} transition-colors`}
+                      className={`text-[12px] text-[var(--text-secondary)] truncate ${!isArtist ? 'hover:text-[var(--text-main)] hover:underline cursor-pointer' : ''} transition-colors`}
                     >
                       {isArtist ? (
                         <>
-                          {result.author}
+                          {result.author || 'Исполнитель'}
                           {result.trackCount > 0 && ` • ${result.trackCount} треков`}
                           {result.albumCount > 0 && ` • ${result.albumCount} релизов`}
                         </>
@@ -829,13 +829,13 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 </div>
 
                 {isArtist && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center shrink-0 ml-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         useArtistStore.getState().openArtist(result.title, result.id, 'modal');
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-surface-hover)] border border-[var(--border-main)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all shadow-sm group/btn"
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-surface-hover)] border border-[var(--border-main)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all shadow-sm group/btn shrink-0 whitespace-nowrap"
                     >
                       <span>Карточка артиста</span>
                       <ChevronRight size={13} className="text-[var(--text-secondary)] group-hover/btn:text-[var(--accent)] group-hover/btn:translate-x-0.5 transition-transform" />

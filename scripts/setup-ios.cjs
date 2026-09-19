@@ -36,3 +36,21 @@ for (const file of appDelegates) {
   fs.writeFileSync(file, content, 'utf8');
   console.log('Successfully injected AVAudioSession into', file);
 }
+
+const plists = findFiles('src-tauri/gen/apple', /Info\.plist$/);
+for (const file of plists) {
+  let content = fs.readFileSync(file, 'utf8');
+  if (!content.includes('UIBackgroundModes')) {
+    const bgModes = `
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+</dict>
+</plist>`;
+    content = content.replace(/<\/dict>\s*<\/plist>/, bgModes);
+    fs.writeFileSync(file, content, 'utf8');
+    console.log('Successfully injected UIBackgroundModes into', file);
+  }
+}
+

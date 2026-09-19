@@ -35,28 +35,28 @@ const BottomPlayer: React.FC = () => {
   if (!currentTrack) return null;
 
   return (
-    <div className="w-full h-16 md:h-[80px] bg-[var(--bg-surface)] border-t border-[var(--border-main)] flex items-center px-3 md:px-4 justify-between shrink-0 relative z-40 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] select-none">
+    <div className="w-full h-[62px] md:h-[80px] bg-[var(--bg-surface)] border-t border-[var(--border-main)] flex items-center px-3 md:px-4 justify-between shrink-0 relative z-40 shadow-[0_-8px_25px_rgba(0,0,0,0.5)] select-none">
       
-      {/* Absolute Progress Bar at the very top of the bottom player */}
+      {/* Sleek Progress Bar at the very top of the bottom player */}
       <div 
         ref={progressBarRef}
-        className="absolute top-0 left-0 right-0 h-1 bg-[var(--bg-surface-hover)] cursor-pointer group"
+        className="absolute top-0 left-0 right-0 h-[2.5px] bg-white/10 cursor-pointer group"
         onClick={handleProgressClick}
       >
         <div 
-          className="h-full bg-[var(--accent)] relative group-hover:bg-[var(--accent-hover)] transition-colors"
+          className="h-full bg-[var(--accent)] relative group-hover:bg-[var(--accent-hover)] transition-all duration-100 rounded-r-full"
           style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%` }}
         >
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transform translate-x-1/2 shadow-md transition-opacity" />
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-white rounded-full opacity-0 group-hover:opacity-100 transform translate-x-1/2 shadow-md transition-opacity" />
         </div>
       </div>
 
       {/* Left: Track Info - Tap anywhere here on mobile to open Fullscreen */}
       <div 
-        className="flex items-center gap-2.5 md:gap-3 flex-1 md:w-[30%] md:flex-initial min-w-0 cursor-pointer"
+        className="flex items-center gap-3 flex-1 md:w-[30%] md:flex-initial min-w-0 cursor-pointer"
         onClick={toggleFullscreen}
       >
-        <div className="w-10 h-10 md:w-12 md:h-12 rounded-md overflow-hidden bg-[var(--bg-surface-hover)] shrink-0 shadow-md relative group">
+        <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl overflow-hidden bg-[var(--bg-surface-hover)] shrink-0 shadow-md border border-white/10 relative group">
           {isVideoUrl(coverUrl) ? (
             <video 
               src={coverUrl} 
@@ -76,12 +76,14 @@ const BottomPlayer: React.FC = () => {
             <Maximize2 size={18} className="text-[var(--text-main)] drop-shadow-lg transition-transform hover:scale-110" />
           </div>
         </div>
-        <div className="flex flex-col min-w-0 pr-2">
-          <span className="text-[var(--text-main)] text-xs md:text-sm font-medium truncate hover:underline track-title">{currentTrack.title}</span>
-          <div onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-col justify-center min-w-0 pr-2 gap-0.5">
+          <span className="text-[var(--text-main)] text-[13.5px] md:text-sm font-semibold tracking-tight truncate hover:underline track-title leading-snug">
+            {currentTrack.title}
+          </span>
+          <div onClick={(e) => e.stopPropagation()} className="truncate">
             <ArtistLinks 
               artist={currentTrack.artist} 
-              className="text-[var(--text-secondary)] text-[11px] md:text-xs truncate transition-colors"
+              className="text-[var(--text-secondary)] text-[12px] md:text-xs font-normal truncate transition-colors leading-tight"
               linkClassName="hover:text-[var(--text-main)]"
               viewMode="modal"
             />
@@ -133,14 +135,14 @@ const BottomPlayer: React.FC = () => {
       </div>
 
       {/* Right: Controls for Mobile & Desktop */}
-      <div className="flex items-center justify-end gap-2 md:gap-3 shrink-0 md:w-[30%] md:min-w-[150px]">
+      <div className="flex items-center justify-end gap-1 md:gap-3 shrink-0 md:w-[30%] md:min-w-[150px]">
         {currentTrack && (
           <>
             <button 
               onClick={() => toggleLike(currentTrack)}
-              className="text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors p-1.5"
+              className="text-[var(--text-secondary)] hover:text-[var(--accent)] active:scale-90 transition-all p-2"
             >
-              <Heart size={18} fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} color={isLiked(currentTrack.id) ? "var(--accent)" : "currentColor"} />
+              <Heart size={19} fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} color={isLiked(currentTrack.id) ? "var(--accent)" : "currentColor"} />
             </button>
             <div className="hidden md:block">
               <TrackOptionsPopover track={currentTrack} direction="up" />
@@ -152,13 +154,13 @@ const BottomPlayer: React.FC = () => {
         <div className="flex md:hidden items-center gap-1">
           <button 
             onClick={togglePlayPause}
-            className="w-9 h-9 flex items-center justify-center bg-white text-black rounded-full active:scale-95 transition-transform shadow-md"
+            className="w-9 h-9 flex items-center justify-center bg-white text-black rounded-full active:scale-95 transition-transform shadow-md hover:bg-zinc-100 ml-1"
           >
             {isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
           </button>
           <button 
             onClick={() => nextTrack()}
-            className="p-1.5 text-[var(--text-secondary)] active:text-[var(--text-main)] transition-colors"
+            className="p-2 text-[var(--text-secondary)] active:text-[var(--text-main)] active:scale-90 transition-all"
           >
             <SkipForward size={20} fill="currentColor" />
           </button>
