@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, Maximize2, SlidersHorizontal, Image as ImageIcon, Heart, AlignLeft } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, Maximize2, SlidersHorizontal, Image as ImageIcon, Heart } from 'lucide-react';
 import { ArtistLinks } from './ArtistLinks';
 
 const TopPlayer: React.FC = () => {
@@ -130,9 +130,9 @@ const TopPlayer: React.FC = () => {
                 </button>
               </div>
 
-              {/* Bottom Row: Like & Lyrics Button (Left) */}
-              <div className="flex items-center gap-2">
-                {currentTrack && (
+              {/* Bottom Row: Like Button Only (Left) */}
+              {currentTrack && (
+                <div className="flex items-center">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -144,19 +144,8 @@ const TopPlayer: React.FC = () => {
                   >
                     <Heart size={18} fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} color={isLiked(currentTrack.id) ? "var(--accent)" : "white"} />
                   </button>
-                )}
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.dispatchEvent(new CustomEvent('open-fullscreen-lyrics'));
-                  }}
-                  className="p-2 sm:p-2.5 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 text-white hover:scale-110 active:scale-95 transition-all shadow-lg cursor-pointer flex items-center justify-center"
-                  title="Текст песни"
-                >
-                  <AlignLeft size={18} />
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           </>
         ) : (

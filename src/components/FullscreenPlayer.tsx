@@ -204,18 +204,6 @@ const FullscreenPlayer: React.FC = () => {
     }
   }, [activeIndex, mobileView, lyrics, isFullscreen, scrollToActiveLine]);
 
-  // Listen to open-fullscreen-lyrics event from TopPlayer cover button
-  useEffect(() => {
-    const handleOpenLyrics = () => {
-      setMobileView('lyrics');
-      if (!usePlayerStore.getState().isFullscreen) {
-        usePlayerStore.getState().toggleFullscreen();
-      }
-    };
-    window.addEventListener('open-fullscreen-lyrics', handleOpenLyrics);
-    return () => window.removeEventListener('open-fullscreen-lyrics', handleOpenLyrics);
-  }, []);
-
   if (!shouldRender || !currentTrack) return null;
 
   return (

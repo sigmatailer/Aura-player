@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Cloud, Check, Layout, Palette, 
-  Upload, Trash2, Sparkles, Disc3, HardDrive, 
+  X, Cloud, Check, Palette, 
+  Upload, Trash2, Sparkles, HardDrive, 
   RefreshCw, Search, Copy, ExternalLink, Loader2
 } from 'lucide-react';
-import { useSettingsStore, usePlayerStore } from '../store/usePlayerStore';
+import { useSettingsStore } from '../store/usePlayerStore';
 import { useThemeStore, isVideoUrl, PRESET_THEMES, AVAILABLE_FONTS, TRACK_FONT_OPTIONS } from '../store/useThemeStore';
 import { useCacheStore, CacheStats } from '../store/useCacheStore';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -245,9 +245,8 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { yandexToken, setYandexToken } = useSettingsStore();
-  const { miniPlayerStyle, setMiniPlayerStyle } = usePlayerStore();
   
-  const [activeTab, setActiveTab] = useState<'services' | 'miniplayer' | 'customization' | 'appearance' | 'cache'>('services');
+  const [activeTab, setActiveTab] = useState<'services' | 'customization' | 'appearance' | 'cache'>('services');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Custom theme creation state
@@ -386,7 +385,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   // Sidebar items definitions
   const sidebarItems = [
     { id: 'services' as const, label: 'Сервисы', icon: Cloud, group: 'main' },
-    { id: 'miniplayer' as const, label: 'Мини-плеер', icon: Layout, group: 'main' },
     { id: 'cache' as const, label: 'Хранилище', icon: HardDrive, group: 'main' },
     { id: 'customization' as const, label: 'Темы', icon: Palette, group: 'appearance' },
     { id: 'appearance' as const, label: 'Оформление', icon: Sparkles, group: 'appearance' },
@@ -717,68 +715,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* Section 2: Mini-player */}
-          {activeTab === 'miniplayer' && (
-            <div className="space-y-5 animate-in fade-in duration-200">
-              <div className="text-[11px] font-bold tracking-widest text-[var(--text-secondary)] uppercase mb-4">
-                НАСТРОЙКИ МИНИ-ПЛЕЕРА
-              </div>
 
-              {/* Card: Mini Player Style */}
-              <div className={`${customWallpaper ? 'bg-black/50 backdrop-blur-md' : 'bg-[var(--bg-surface)]'} border border-[var(--border-main)] rounded-2xl p-5 shadow-sm`}>
-                <span className="text-[14px] font-semibold text-[var(--text-main)] tracking-tight block">
-                  Стиль плеера
-                </span>
-                <p className="text-[12px] text-[var(--text-secondary)] mt-1 mb-4 leading-relaxed">
-                  Выберите визуальный формат окна при переходе в режим мини-плеера поверх всех окон.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {/* Square Option */}
-                  <div 
-                    onClick={() => setMiniPlayerStyle('square')}
-                    className={`rounded-xl p-4 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-all ${
-                      miniPlayerStyle === 'square'
-                        ? 'bg-[var(--bg-surface-hover)] border-2 border-[var(--accent)] text-[var(--text-main)] shadow-md'
-                        : 'bg-[var(--bg-main)]/60 hover:bg-[var(--bg-surface-hover)]/60 border border-[var(--border-main)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
-                    }`}
-                  >
-                    <Disc3 size={24} className={miniPlayerStyle === 'square' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]/60'} />
-                    <div className="text-center">
-                      <div className="text-xs font-bold text-[var(--text-main)]">Квадратный</div>
-                      <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">260×310 px • Только обложка</div>
-                    </div>
-                  </div>
-
-                  {/* Rectangle Option */}
-                  <div 
-                    onClick={() => setMiniPlayerStyle('rectangle')}
-                    className={`rounded-xl p-4 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-all ${
-                      miniPlayerStyle === 'rectangle'
-                        ? 'bg-[var(--bg-surface-hover)] border-2 border-[var(--accent)] text-[var(--text-main)] shadow-md'
-                        : 'bg-[var(--bg-main)]/60 hover:bg-[var(--bg-surface-hover)]/60 border border-[var(--border-main)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
-                    }`}
-                  >
-                    <Layout size={24} className={miniPlayerStyle === 'rectangle' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]/60'} />
-                    <div className="text-center">
-                      <div className="text-xs font-bold text-[var(--text-main)]">Прямоугольный</div>
-                      <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">400×108 px • С выездом вниз</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card: Mini Player Details */}
-              <div className={`${customWallpaper ? 'bg-black/50 backdrop-blur-md' : 'bg-[var(--bg-surface)]'} border border-[var(--border-main)] rounded-2xl p-5 shadow-sm`}>
-                <span className="text-[14px] font-semibold text-[var(--text-main)] tracking-tight block">
-                  Поведение элементов
-                </span>
-                <p className="text-[12px] text-[var(--text-secondary)] mt-1 leading-relaxed">
-                  В мини-плеере всплывающие подсказки отключены для чистоты обзора, а кнопка двойного клика мгновенно возвращает приложение в полный размер.
-                </p>
-              </div>
-            </div>
-          )}
 
           {/* Section 3: Themes & Palettes */}
           {activeTab === 'customization' && (
