@@ -9,8 +9,34 @@ import { useThemeStore, isVideoUrl, PRESET_THEMES, AVAILABLE_FONTS, TRACK_FONT_O
 import { useCacheStore, CacheStats } from '../store/useCacheStore';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { readFile } from '@tauri-apps/plugin-fs';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
+
+async function fileToMediaUrl(filePath: string): Promise<string> {
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  const isVideo = ['mp4', 'webm', 'mov', 'mkv'].includes(ext);
+  if (isVideo) {
+    return convertFileSrc(filePath);
+  }
+  try {
+    const bytes = await readFile(filePath);
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                 ext === 'png' ? 'image/png' :
+                 ext === 'gif' ? 'image/gif' :
+                 ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    let binary = '';
+    const uint8Array = new Uint8Array(bytes);
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, Array.from(uint8Array.subarray(i, i + chunkSize)));
+    }
+    return `data:${mime};base64,${btoa(binary)}`;
+  } catch (e) {
+    console.warn('Failed to read file as data url, falling back to convertFileSrc:', e);
+    return convertFileSrc(filePath);
+  }
+}
 
 function hexToHsl(hex: string): [number, number, number] {
   let c = hex.replace('#', '').trim();
@@ -1102,8 +1128,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           filters: [{ name: 'Медиа (Видео, GIF, Фото)', extensions: ['mp4', 'webm', 'mov', 'mkv', 'gif', 'png', 'jpg', 'jpeg', 'webp'] }]
                         });
                         if (selected && typeof selected === 'string') {
-                          const assetUrl = convertFileSrc(selected);
-                          setWallpaper(assetUrl);
+                          const mediaUrl = await fileToMediaUrl(selected);
+                          setWallpaper(mediaUrl);
                         }
                       } catch (err) {
                         console.error('Failed to open wallpaper file:', err);
@@ -1253,8 +1279,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           filters: [{ name: 'Медиа (Видео, GIF, Фото)', extensions: ['mp4', 'webm', 'mov', 'mkv', 'gif', 'png', 'jpg', 'jpeg', 'webp'] }]
                         });
                         if (selected && typeof selected === 'string') {
-                          const assetUrl = convertFileSrc(selected);
-                          setCustomCover(assetUrl);
+                          const mediaUrl = await fileToMediaUrl(selected);
+                          setCustomCover(mediaUrl);
                         }
                       } catch (err) {
                         console.error('Failed to open cover media file:', err);

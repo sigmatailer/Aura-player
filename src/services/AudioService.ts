@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { readFile, mkdir } from '@tauri-apps/plugin-fs';
+import { readFile, writeFile, mkdir } from '@tauri-apps/plugin-fs';
 import { appDataDir, join } from '@tauri-apps/api/path';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import * as mm from 'music-metadata-browser';
@@ -542,12 +542,36 @@ export class AudioService {
         // Игнорируем ошибку, если папка уже существует
       }
 
-      const ext = actualPath.split('.').pop();
+      const ext = actualPath.split('.').pop()?.toLowerCase() || 'jpg';
       const newCoverFileName = `cover_${trackId}.${ext}`;
       const newCoverPath = await join(coversDirPath, newCoverFileName);
 
-      const assetUrl = convertFileSrc(newCoverPath);
-      usePlayerStore.getState().setCustomCover(trackId, assetUrl);
+      // Write file to local disk for persistence
+      try {
+        await writeFile(newCoverPath, imageData);
+      } catch (e) {
+        console.warn('Failed to write cover to disk:', e);
+      }
+
+      // Convert to Base64 Data URL for instant, reliable display across all platforms (no 403 / question mark icon)
+      let dataUrl = '';
+      try {
+        const uint8Array = new Uint8Array(imageData);
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, Array.from(uint8Array.subarray(i, i + chunkSize)));
+        }
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                     ext === 'png' ? 'image/png' :
+                     ext === 'gif' ? 'image/gif' :
+                     ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        dataUrl = `data:${mime};base64,${btoa(binary)}`;
+      } catch (convErr) {
+        dataUrl = convertFileSrc(newCoverPath);
+      }
+
+      usePlayerStore.getState().setCustomCover(trackId, dataUrl);
       
       try {
         const formData = new FormData();
