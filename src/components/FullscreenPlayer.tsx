@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, ChevronDown } from 'lucide-react';
@@ -113,6 +113,9 @@ const FullscreenPlayer: React.FC = () => {
                            if (text) parsed.push({ time: minutes * 60 + seconds, text });
                        }
                    }
+               } else if (data.result.lyrics.fullLyrics) {
+                   const plainLines = data.result.lyrics.fullLyrics.split('\n').filter((l: string) => l.trim().length > 0);
+                   parsed = plainLines.map((text: string) => ({ time: 999999, text }));
                }
             }
           }
@@ -120,9 +123,10 @@ const FullscreenPlayer: React.FC = () => {
             console.error("Yandex lyrics error", err);
         }
 
-        if (parsed.length === 0) {
-            const artistName = currentTrack.artist.split(',')[0].split('&')[0].trim();
-            const q = encodeURIComponent(`${currentTrack.title} ${artistName}`);
+        if (parsed.length === 0 || parsed[0]?.time === 999999) {
+            const cleanTitle = currentTrack.title.replace(/\s*[\(\[].*?[\)\]]/g, '').trim();
+            const cleanArtist = currentTrack.artist.split(/[,&/]/)[0].trim();
+            const q = encodeURIComponent(`${cleanTitle} ${cleanArtist}`);
             try {
               const lrclibRes = await fetch(`https://lrclib.net/api/search?q=${q}`);
               const data = await lrclibRes.json();
@@ -130,15 +134,17 @@ const FullscreenPlayer: React.FC = () => {
                 const trackData = data[0];
                 if (trackData.syncedLyrics) {
                   const lines = trackData.syncedLyrics.split('\n');
+                  const synced: LyricLine[] = [];
                   for (const line of lines) {
                     const match = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
                     if (match) {
                       const time = parseInt(match[1]) * 60 + parseFloat(match[2]);
                       const text = match[3].trim();
-                      if (text) parsed.push({ time, text });
+                      if (text) synced.push({ time, text });
                     }
                   }
-                } else if (trackData.plainLyrics) {
+                  if (synced.length > 0) parsed = synced;
+                } else if (trackData.plainLyrics && parsed.length === 0) {
                   const lines = trackData.plainLyrics.split('\n').filter((l: string) => l.trim().length > 0);
                   parsed = lines.map((text: string) => ({ time: 999999, text }));
                 }
@@ -158,7 +164,7 @@ const FullscreenPlayer: React.FC = () => {
 
   // Find active line
   const isPlain = lyrics.length > 0 && lyrics[0].time === 999999;
-    let activeIndex = -1;
+  let activeIndex = -1;
   for (let i = 0; i < lyrics.length; i++) {
     // Add 0.5s offset for smoother transition before the word is sung
     if (progress + 0.5 >= lyrics[i].time) {
@@ -168,17 +174,47 @@ const FullscreenPlayer: React.FC = () => {
     }
   }
 
-  // Auto-scroll
-  useEffect(() => {
-    if (lyricsRef.current && activeIndex >= 0) {
-      const activeEl = lyricsRef.current.children[activeIndex] as HTMLElement;
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
+  const [mobileView, setMobileView] = useState<'player' | 'lyrics'>('player');
+  const isUserScrollingRef = useRef(false);
+  const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Scroll to active line with layout-aware container scrolling
+  const scrollToActiveLine = useCallback((smooth: boolean = true) => {
+    if (!lyricsRef.current || activeIndex < 0) return;
+    if (isUserScrollingRef.current) return;
+
+    const container = lyricsRef.current;
+    const activeEl = container.children[activeIndex] as HTMLElement;
+    if (!activeEl) return;
+
+    const targetTop = activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2;
+    container.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: smooth ? 'smooth' : 'auto'
+    });
   }, [activeIndex]);
 
-  const [mobileView, setMobileView] = useState<'player' | 'lyrics'>('player');
+  // Synchronize on active index change, view toggle, lyrics load, or fullscreen open
+  useEffect(() => {
+    if (mobileView === 'lyrics' || (typeof window !== 'undefined' && window.innerWidth >= 768)) {
+      const timer = setTimeout(() => {
+        scrollToActiveLine(true);
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [activeIndex, mobileView, lyrics, isFullscreen, scrollToActiveLine]);
+
+  // Listen to open-fullscreen-lyrics event from TopPlayer cover button
+  useEffect(() => {
+    const handleOpenLyrics = () => {
+      setMobileView('lyrics');
+      if (!usePlayerStore.getState().isFullscreen) {
+        usePlayerStore.getState().toggleFullscreen();
+      }
+    };
+    window.addEventListener('open-fullscreen-lyrics', handleOpenLyrics);
+    return () => window.removeEventListener('open-fullscreen-lyrics', handleOpenLyrics);
+  }, []);
 
   if (!shouldRender || !currentTrack) return null;
 
@@ -192,18 +228,18 @@ const FullscreenPlayer: React.FC = () => {
     >
       <div data-tauri-drag-region className="absolute inset-0 bg-black/50 backdrop-blur-[80px] pointer-events-none" />
 
-      {/* Close button with explicit high z-index and padding for easy clicking */}
+      {/* Close button with explicit high z-index and safe area padding for Dynamic Island */}
       <button 
         onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        className="absolute top-11 left-4 md:top-6 md:left-6 z-[10000] w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-[var(--text-main)]/70 hover:text-[var(--text-main)] hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+        className="absolute top-[max(3.25rem,calc(env(safe-area-inset-top,0px)+10px))] left-4 md:top-6 md:left-6 z-[10000] w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-[var(--text-main)]/70 hover:text-[var(--text-main)] hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
       >
         <ChevronDown size={20} />
       </button>
 
       {/* Mobile view switcher if lyrics available */}
       {lyrics.length > 0 && (
-        <div className="md:hidden absolute top-11 right-4 z-[10000] flex items-center gap-1 bg-white/10 backdrop-blur-md rounded-full p-0.5 border border-white/10 text-xs">
+        <div className="md:hidden absolute top-[max(3.25rem,calc(env(safe-area-inset-top,0px)+10px))] right-4 z-[10000] flex items-center gap-1 bg-white/10 backdrop-blur-md rounded-full p-0.5 border border-white/10 text-xs">
           <button
             onClick={() => setMobileView('player')}
             className={`px-3 py-1 rounded-full font-medium transition-all ${mobileView === 'player' ? 'bg-white text-black shadow' : 'text-white/70'}`}
@@ -314,6 +350,25 @@ const FullscreenPlayer: React.FC = () => {
           ) : lyrics.length > 0 ? (
             <div 
               ref={lyricsRef} 
+              onTouchStart={() => {
+                isUserScrollingRef.current = true;
+                if (userScrollTimeoutRef.current) clearTimeout(userScrollTimeoutRef.current);
+              }}
+              onTouchEnd={() => {
+                if (userScrollTimeoutRef.current) clearTimeout(userScrollTimeoutRef.current);
+                userScrollTimeoutRef.current = setTimeout(() => {
+                  isUserScrollingRef.current = false;
+                  scrollToActiveLine(true);
+                }, 3500);
+              }}
+              onWheel={() => {
+                isUserScrollingRef.current = true;
+                if (userScrollTimeoutRef.current) clearTimeout(userScrollTimeoutRef.current);
+                userScrollTimeoutRef.current = setTimeout(() => {
+                  isUserScrollingRef.current = false;
+                  scrollToActiveLine(true);
+                }, 3500);
+              }}
               className="h-full overflow-y-auto scrollbar-hide flex flex-col gap-8 py-[40vh]"
               style={{
                 maskImage: 'linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
@@ -324,7 +379,11 @@ const FullscreenPlayer: React.FC = () => {
                 <div 
                   key={i}
                   className={`font-bold cursor-pointer transition-all duration-700 ease-out py-3 break-words whitespace-pre-wrap origin-left text-3xl lg:text-4xl xl:text-5xl ${i === activeIndex || (isPlain) ? 'scale-100 text-[var(--text-main)] drop-shadow-xl opacity-100' : 'scale-[0.85] text-[var(--text-main)]/40 hover:text-[var(--text-main)]/60 opacity-60'}`}
-                  onClick={() => setProgress(line.time)}
+                  onClick={() => {
+                    setProgress(line.time);
+                    isUserScrollingRef.current = false;
+                    if (userScrollTimeoutRef.current) clearTimeout(userScrollTimeoutRef.current);
+                  }}
                 >
                   {line.text || '\u00A0'}
                 </div>

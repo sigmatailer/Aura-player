@@ -12,10 +12,11 @@ export class AudioService {
   private audio: HTMLAudioElement;
   private currentLoadId: number = 0;
 
-  // Equalizer
+  // Equalizer & Audio Graph
   private audioCtx: AudioContext | null = null;
   private source: MediaElementAudioSourceNode | null = null;
   private gainNode: GainNode | null = null;
+  private volumeNode: GainNode | null = null;
   private eqBands: BiquadFilterNode[] = [];
   public eqFrequencies = [60, 150, 400, 1000, 2400, 15000];
 
@@ -24,7 +25,7 @@ export class AudioService {
     this.audio.crossOrigin = 'anonymous'; // Now works because we download streams locally!
     
     // Инициализируем громкость с учетом кривой
-    this.audio.volume = Math.pow(usePlayerStore.getState().volume, 2);
+    this.applyVolume(usePlayerStore.getState().volume ?? 1);
     
     // Подписываемся на события аудио
     this.audio.addEventListener('timeupdate', () => {
@@ -138,7 +139,7 @@ export class AudioService {
     usePlayerStore.subscribe(async (state, prevState) => {
       // Sync Volume
       if (state.volume !== prevState.volume) {
-        this.audio.volume = Math.pow(state.volume, 2);
+        this.applyVolume(state.volume);
       }
       
       // Sync EQ
@@ -162,10 +163,8 @@ export class AudioService {
       let trackChanged = false;
       if (currentTrack?.id !== prevTrack?.id) {
         trackChanged = true;
-        if (hasCustomEq) {
-          this.initEqualizer();
-          this.resumeAudioContext();
-        }
+        this.initEqualizer();
+        this.resumeAudioContext();
         if (!currentTrack) {
           this.currentLoadId++;
           this.audio.pause();
@@ -194,15 +193,12 @@ export class AudioService {
           navigator.mediaSession.playbackState = state.isPlaying ? 'playing' : 'paused';
         }
         if (state.isPlaying && state.currentTrackIndex >= 0) {
+          this.initEqualizer();
+          this.resumeAudioContext();
           if (!this.audio.src || this.audio.src === window.location.href) {
-            if (hasCustomEq) {
-              this.initEqualizer();
-              this.resumeAudioContext();
-            }
             this._loadTrack(currentTrack!, true, true);
             return;
           }
-          this.resumeAudioContext();
           const playPromise = this.audio.play();
           if (playPromise !== undefined) {
             playPromise.catch(e => {
@@ -212,11 +208,6 @@ export class AudioService {
         } else {
           this.audio.pause();
         }
-      }
-      
-      // Громкость изменилась
-      if (state.volume !== prevState.volume) {
-        this.audio.volume = Math.pow(state.volume, 2);
       }
       
       // ВАЖНО: не применяем прогресс, если трек только что переключился!
@@ -310,10 +301,30 @@ export class AudioService {
       antiClipLimiter.attack.value = 0.005;
       antiClipLimiter.release.value = 0.20;
 
+      // Dedicated Volume Gain Node (Web Audio API volume control - works across all platforms including iOS WebKit!)
+      this.volumeNode = this.audioCtx.createGain();
+      const currentVol = usePlayerStore.getState().volume ?? 1;
+      this.volumeNode.gain.value = Math.max(0, Math.min(1, Math.pow(currentVol, 2)));
+
       lastNode.connect(antiClipLimiter);
-      antiClipLimiter.connect(this.audioCtx.destination);
+      antiClipLimiter.connect(this.volumeNode);
+      this.volumeNode.connect(this.audioCtx.destination);
     } catch (e) {
       console.error('Equalizer initialization failed:', e);
+    }
+  }
+
+  public applyVolume(volume: number) {
+    const curved = Math.max(0, Math.min(1, Math.pow(volume, 2)));
+    try {
+      this.audio.volume = curved;
+    } catch {}
+    if (this.volumeNode) {
+      if (this.audioCtx && this.audioCtx.state === 'running') {
+        this.volumeNode.gain.setTargetAtTime(curved, this.audioCtx.currentTime, 0.02);
+      } else {
+        this.volumeNode.gain.value = curved;
+      }
     }
   }
 

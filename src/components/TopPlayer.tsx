@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Repeat, Shuffle, Maximize2, SlidersHorizontal, Image as ImageIcon, Heart } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, Maximize2, SlidersHorizontal, Image as ImageIcon, Heart, AlignLeft } from 'lucide-react';
 import { ArtistLinks } from './ArtistLinks';
 
 const TopPlayer: React.FC = () => {
@@ -27,6 +27,44 @@ const TopPlayer: React.FC = () => {
 
   const [volInput, setVolInput] = useState(Math.round(volume * 100).toString());
   const [scrubbingProgress, setScrubbingProgress] = useState<number | null>(null);
+  const [isOverlayVisible, setIsOverlayVisible] = useState(false);
+  const [lastNonZeroVol, setLastNonZeroVol] = useState(volume > 0 ? volume : 0.8);
+  const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    };
+  }, []);
+
+  const handleCoverClick = () => {
+    setIsOverlayVisible(prev => {
+      const next = !prev;
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      if (next) {
+        overlayTimerRef.current = setTimeout(() => {
+          setIsOverlayVisible(false);
+        }, 5000);
+      }
+      return next;
+    });
+  };
+
+  const resetOverlayTimer = () => {
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    overlayTimerRef.current = setTimeout(() => {
+      setIsOverlayVisible(false);
+    }, 5000);
+  };
+
+  const toggleMute = () => {
+    if (volume > 0) {
+      setLastNonZeroVol(volume);
+      setVolume(0);
+    } else {
+      setVolume(lastNonZeroVol || 0.8);
+    }
+  };
 
   useEffect(() => {
     if (document.activeElement?.id !== 'vol-input') {
@@ -49,7 +87,10 @@ const TopPlayer: React.FC = () => {
   return (
     <div className="w-full flex flex-col md:flex-row items-center gap-4 sm:gap-6 lg:gap-10 mt-0 bg-transparent">
       {/* Cover Art */}
-      <div className="w-[88vw] max-w-[340px] xs:max-w-[370px] aspect-square md:w-[340px] md:h-[340px] lg:w-[400px] lg:h-[400px] shrink-0 rounded-[24px] md:rounded-[28px] overflow-hidden bg-[var(--bg-surface-hover)] shadow-2xl shadow-black/80 ring-1 ring-white/10 relative group transition-all duration-300">
+      <div 
+        onClick={handleCoverClick}
+        className="w-[88vw] max-w-[340px] xs:max-w-[370px] aspect-square md:w-[340px] md:h-[340px] lg:w-[400px] lg:h-[400px] shrink-0 rounded-[24px] md:rounded-[28px] overflow-hidden bg-[var(--bg-surface-hover)] shadow-2xl shadow-black/80 ring-1 ring-white/10 relative group transition-all duration-300 cursor-pointer select-none"
+      >
         {currentTrack || customCover ? (
           <>
             {isVideoUrl(coverUrl) ? (
@@ -67,28 +108,56 @@ const TopPlayer: React.FC = () => {
               <img src={coverUrl} alt="Cover" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
             )}
             
-            {/* Fullscreen Button */}
+            {/* Interactive Overlay: Shows on click and auto-hides after 5 seconds; hover on desktop */}
             <div 
-              className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/50 backdrop-blur-md opacity-90 md:opacity-0 md:group-hover:opacity-100 transition-all hover:scale-110 shadow-lg cursor-pointer z-10"
-              onClick={() => usePlayerStore.getState().toggleFullscreen()}
-              title="На весь экран"
+              className={`absolute inset-0 bg-black/25 backdrop-blur-[1px] transition-all duration-300 flex flex-col justify-between p-3 ${
+                isOverlayVisible 
+                  ? 'opacity-100 pointer-events-auto' 
+                  : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'
+              }`}
             >
-              <Maximize2 size={16} className="text-white drop-shadow-md" />
-            </div>
+              {/* Top Row: Fullscreen Button */}
+              <div className="flex justify-end">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    usePlayerStore.getState().toggleFullscreen();
+                  }}
+                  className="p-2 sm:p-2.5 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 text-white hover:scale-110 active:scale-95 transition-all shadow-lg cursor-pointer"
+                  title="На весь экран"
+                >
+                  <Maximize2 size={16} className="drop-shadow-md" />
+                </button>
+              </div>
 
-            {/* Like Button */}
-            {currentTrack && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleLike(currentTrack);
-                }}
-                className="absolute bottom-2.5 left-2.5 p-1.5 rounded-full bg-black/50 backdrop-blur-md opacity-90 md:opacity-0 md:group-hover:opacity-100 transition-all hover:scale-110 shadow-lg z-10"
-                title={isLiked(currentTrack.id) ? "Удалить из любимых" : "В любимые"}
-              >
-                <Heart size={18} fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} color={isLiked(currentTrack.id) ? "var(--accent)" : "white"} />
-              </button>
-            )}
+              {/* Bottom Row: Like & Lyrics Button (Left) */}
+              <div className="flex items-center gap-2">
+                {currentTrack && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleLike(currentTrack);
+                      resetOverlayTimer();
+                    }}
+                    className="p-2 sm:p-2.5 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 text-white hover:scale-110 active:scale-95 transition-all shadow-lg cursor-pointer"
+                    title={isLiked(currentTrack.id) ? "Удалить из любимых" : "В любимые"}
+                  >
+                    <Heart size={18} fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} color={isLiked(currentTrack.id) ? "var(--accent)" : "white"} />
+                  </button>
+                )}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.dispatchEvent(new CustomEvent('open-fullscreen-lyrics'));
+                  }}
+                  className="p-2 sm:p-2.5 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 text-white hover:scale-110 active:scale-95 transition-all shadow-lg cursor-pointer flex items-center justify-center"
+                  title="Текст песни"
+                >
+                  <AlignLeft size={18} />
+                </button>
+              </div>
+            </div>
           </>
         ) : (
           <div className="flex-1 h-full flex items-center justify-center text-[var(--text-secondary)] flex-col gap-3">
@@ -206,8 +275,18 @@ const TopPlayer: React.FC = () => {
         {/* Volume Mixer & Equalizer */}
         <div className="flex items-center gap-2.5 sm:gap-3 w-full max-w-sm sm:max-w-md mx-auto md:mx-0 mt-0.5 md:mt-2">
           {/* Volume Control */}
-          <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-full flex items-center px-3.5 py-1.5 sm:py-2 gap-2.5 shadow-sm transition-all duration-300">
-            <Volume2 size={16} strokeWidth={1.75} className="text-[var(--text-secondary)] shrink-0" />
+          <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-full flex items-center px-3 sm:px-3.5 py-1.5 sm:py-2 gap-2 sm:gap-2.5 shadow-sm transition-all duration-300">
+            <button
+              onClick={toggleMute}
+              className="text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-90 transition-transform shrink-0 cursor-pointer p-0.5"
+              title={volume === 0 ? "Включить звук" : "Выключить звук"}
+            >
+              {volume === 0 ? (
+                <VolumeX size={17} strokeWidth={1.75} className="text-red-400" />
+              ) : (
+                <Volume2 size={17} strokeWidth={1.75} />
+              )}
+            </button>
             <input 
               type="range"
               min="0"
@@ -215,7 +294,7 @@ const TopPlayer: React.FC = () => {
               step="0.01"
               value={volume}
               onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="flex-1 h-[4px] bg-[var(--bg-surface-hover)] rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+              className="flex-1 h-[5px] bg-[var(--bg-surface-hover)] rounded-full appearance-none outline-none cursor-pointer touch-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4.5 [&::-webkit-slider-thumb]:h-4.5 md:[&::-webkit-slider-thumb]:w-3.5 md:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
               style={{
                 background: `linear-gradient(to right, white ${volume * 100}%, #2a2a2a ${volume * 100}%)`
               }}

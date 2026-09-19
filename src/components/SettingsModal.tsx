@@ -412,13 +412,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         {/* Close Button */}
         <button 
           onClick={onClose}
-          className="absolute top-11 right-4 md:top-5 md:right-5 z-30 w-8 h-8 rounded-full flex items-center justify-center bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-main)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all cursor-pointer shadow-sm"
+          className="absolute top-[max(4.75rem,calc(env(safe-area-inset-top,0px)+16px))] right-4 md:top-5 md:right-5 z-30 w-8 h-8 rounded-full flex items-center justify-center bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-main)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all cursor-pointer shadow-sm"
         >
           <X size={16} />
         </button>
 
         {/* Navigation Sidebar / Mobile Top Tabs */}
-        <div className={`w-full md:w-64 shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-main)] ${customWallpaper ? 'bg-black/40 backdrop-blur-md' : 'bg-[var(--bg-surface)]/50'} p-3 md:p-4 pt-11 md:pt-5 overflow-x-auto md:overflow-hidden scrollbar-hide`}>
+        <div className={`w-full md:w-64 shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-main)] ${customWallpaper ? 'bg-black/40 backdrop-blur-md' : 'bg-[var(--bg-surface)]/50'} p-3 md:p-4 pt-[max(4.75rem,calc(env(safe-area-inset-top,0px)+16px))] md:pt-5 overflow-x-auto md:overflow-hidden scrollbar-hide`}>
           <div className="flex md:flex-col gap-2 md:space-y-5 overflow-x-auto md:overflow-visible scrollbar-hide pr-10 md:pr-0">
             {/* Tabs */}
             <div className="flex md:flex-col gap-1.5 md:space-y-1 shrink-0">
