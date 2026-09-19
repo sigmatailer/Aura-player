@@ -17,23 +17,33 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android, armv7-linux-androideabi
 
-      - name: Configure Android NDK & SDK
+      - name: Configure Android SDK & NDK
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
           
+          # Accept licenses
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          
+          # Ensure target platforms and build tools are present
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          
+          # Find installed NDK or install fallback
           NDK_DIR=$(ls -d $ANDROID_HOME/ndk/* 2>/dev/null | tail -n 1)
           if [ -z "$NDK_DIR" ]; then
             echo "Installing NDK via sdkmanager..."
-            sdkmanager --install "ndk;27.0.12077973"
+            $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973"
             NDK_DIR="$ANDROID_HOME/ndk/27.0.12077973"
           fi
           NDK_VER=$(basename "$NDK_DIR")
@@ -42,18 +52,13 @@ jobs:
           echo "ANDROID_NDK_ROOT=$NDK_DIR" >> $GITHUB_ENV
           echo "NDK_VERSION=$NDK_VER" >> $GITHUB_ENV
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
       - name: Install dependencies
         run: npm install
 
       - name: Build Android APK
         run: |
-          npx tauri android build --apk --target aarch64 armv7
+          chmod +x src-tauri/gen/android/gradlew || true
+          npx tauri android build --apk --target aarch64 armv7 --ci
 
       - name: Sign APK
         run: |
@@ -67,10 +72,13 @@ jobs:
           echo "Found APKs:"
           echo "$APK_FILES"
           
-          # Pick release or universal apk
-          MAIN_APK=$(echo "$APK_FILES" | grep -i "universal" | head -n 1)
+          # Prioritize release and universal apk
+          MAIN_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*release*.apk" -type f | grep -i "universal" | head -n 1)
           if [ -z "$MAIN_APK" ]; then
-            MAIN_APK=$(echo "$APK_FILES" | head -n 1)
+            MAIN_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*release*.apk" -type f | head -n 1)
+          fi
+          if [ -z "$MAIN_APK" ]; then
+            MAIN_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -type f | head -n 1)
           fi
           
           if [ -z "$MAIN_APK" ]; then
@@ -79,7 +87,16 @@ jobs:
           fi
           
           echo "Selected APK: $MAIN_APK"
-          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:auraplayer --ks-key-alias aura --key-pass pass:auraplayer --out Aura-Player.apk "$MAIN_APK"
+          
+          # Zipalign if needed
+          ALIGNED_APK="aligned-temp.apk"
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$MAIN_APK" "$ALIGNED_APK" || cp "$MAIN_APK" "$ALIGNED_APK"
+          
+          # Sign with apksigner
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:auraplayer --ks-key-alias aura --key-pass pass:auraplayer --out Aura-Player.apk "$ALIGNED_APK"
+          
+          # Verify signature
+          $BUILD_TOOLS_DIR/apksigner verify -v Aura-Player.apk
           
           ls -lh Aura-Player.apk
 
