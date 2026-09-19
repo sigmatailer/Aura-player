@@ -261,8 +261,8 @@ const TopPlayer: React.FC = () => {
           </div>
         </div>
 
-        {/* Volume Mixer & Equalizer */}
-        <div className="flex items-center gap-2.5 sm:gap-3 w-full max-w-sm sm:max-w-md mx-auto md:mx-0 mt-0.5 md:mt-2">
+        {/* Volume Mixer & Equalizer - Hidden on mobile/iOS where hardware buttons control audio */}
+        <div className="hidden md:flex items-center gap-2.5 sm:gap-3 w-full max-w-sm sm:max-w-md mx-auto md:mx-0 mt-0.5 md:mt-2">
           {/* Volume Control */}
           <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-full flex items-center px-3 sm:px-3.5 py-1.5 sm:py-2 gap-2 sm:gap-2.5 shadow-sm transition-all duration-300">
             <button

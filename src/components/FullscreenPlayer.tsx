@@ -61,7 +61,7 @@ const FullscreenPlayer: React.FC = () => {
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [loadingLyrics, setLoadingLyrics] = useState(false);
   const [scrubbingProgress, setScrubbingProgress] = useState<number | null>(null);
-  const lyricsRef = useRef<HTMLDivElement>(null);
+  const [mobileView, setMobileView] = useState<'player' | 'lyrics'>('player');
 
   // Animation states
   const [shouldRender, setShouldRender] = useState(false);
@@ -71,11 +71,20 @@ const FullscreenPlayer: React.FC = () => {
     if (isFullscreen) {
       setShouldRender(true);
       setIsClosing(false);
+      setMobileView('player');
     } else if (shouldRender) {
       setIsClosing(true);
-      setTimeout(() => setShouldRender(false), 500); // 500ms slide down animation
+      setTimeout(() => {
+        setShouldRender(false);
+        setMobileView('player');
+      }, 500); // 500ms slide down animation
     }
   }, [isFullscreen, shouldRender]);
+
+  // Always reset to track player view when track changes
+  useEffect(() => {
+    setMobileView('player');
+  }, [currentTrack?.id]);
 
   useEffect(() => {
     if (isFullscreen && currentTrack) {
@@ -174,7 +183,7 @@ const FullscreenPlayer: React.FC = () => {
     }
   }
 
-  const [mobileView, setMobileView] = useState<'player' | 'lyrics'>('player');
+  const lyricsRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
   const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 

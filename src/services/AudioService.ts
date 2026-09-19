@@ -13,6 +13,7 @@ export const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.tes
 export class AudioService {
   private audio: HTMLAudioElement;
   private currentLoadId: number = 0;
+  private isLoadingTrack: boolean = false;
 
   // Equalizer & Audio Graph
   private audioCtx: AudioContext | null = null;
@@ -56,7 +57,7 @@ export class AudioService {
     this.audio.addEventListener('seeked', () => {
       this.updateMediaSessionPosition();
       const state = usePlayerStore.getState();
-      if (state.isPlaying && this.audio.paused) {
+      if (!this.isLoadingTrack && state.isPlaying && this.audio.paused && this.audio.src) {
         this.resumeAudioContext();
         const playPromise = this.audio.play();
         if (playPromise !== undefined) {
@@ -100,23 +101,19 @@ export class AudioService {
       }
     }
 
-    this.audio.addEventListener('stalled', () => {
-      const state = usePlayerStore.getState();
-      if (state.isPlaying && this.audio.paused && this.audio.readyState >= 2) {
-        this.resumeAudioContext();
-        this.audio.play().catch(() => {});
-      }
-    });
-
     this.audio.addEventListener('error', () => {
       console.warn('Audio element error:', this.audio.error);
     });
     
     this.audio.addEventListener('ended', () => {
       // Защита от ложных срабатываний ended при сбросе src или во время переключения
+      if (this.isLoadingTrack) return;
       if (!this.audio.src || this.audio.src === window.location.href) return;
       if (isNaN(this.audio.duration) || this.audio.duration <= 0) return;
       if (Math.abs(this.audio.currentTime - this.audio.duration) > 2) return;
+
+      // Immediately pause old track to prevent any audio bleed
+      this.audio.pause();
 
       const state = usePlayerStore.getState();
       state.nextTrack(true);
@@ -165,11 +162,15 @@ export class AudioService {
       let trackChanged = false;
       if (currentTrack?.id !== prevTrack?.id) {
         trackChanged = true;
+        this.isLoadingTrack = true;
+        this.audio.pause();
+        this.audio.currentTime = 0;
         this.resumeAudioContext();
         if (!currentTrack) {
           this.currentLoadId++;
-          this.audio.pause();
-          this.audio.src = '';
+          this.isLoadingTrack = false;
+          this.audio.removeAttribute('src');
+          this.audio.load();
           this.updateMediaSession(null, false);
           return;
         }
@@ -619,9 +620,13 @@ export class AudioService {
   private async _loadTrack(track: Track, play: boolean, isResume: boolean = false) {
     // Increment load generation ID for concurrency/race condition protection
     const loadId = ++this.currentLoadId;
+    this.isLoadingTrack = true;
 
-    // Stop and pause immediately
+    // Stop, clear and unload old audio immediately so it cannot bleed through
     this.audio.pause();
+    this.audio.currentTime = 0;
+    this.audio.removeAttribute('src');
+    this.audio.load();
 
     let isYandex = track.filePath.startsWith('yandex:');
     let trackId = '';
@@ -701,6 +706,7 @@ export class AudioService {
         }
       } catch (err) {
         if (loadId === this.currentLoadId) {
+          this.isLoadingTrack = false;
           console.error("Failed to load yandex stream", err);
         }
         return;
@@ -719,6 +725,8 @@ export class AudioService {
     if (!currentStoreTrack || currentStoreTrack.id !== track.id) {
       return;
     }
+
+    this.isLoadingTrack = false;
 
     if (!play || isResume) {
       const progress = usePlayerStore.getState().progress || 0;
