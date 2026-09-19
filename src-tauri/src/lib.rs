@@ -812,7 +812,7 @@ async fn get_full_audio_stream(query: String, track_id: String) -> Result<String
 
 #[tauri::command]
 fn resize_window(_window: tauri::Window, _width: f64, _height: f64, _always_on_top: bool) -> Result<(), String> {
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         use tauri::Size;
         use tauri::LogicalSize;
@@ -842,7 +842,7 @@ fn resize_window(_window: tauri::Window, _width: f64, _height: f64, _always_on_t
 
 #[tauri::command]
 fn set_mini_height(_window: tauri::Window, _height: f64) -> Result<(), String> {
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         use tauri::Size;
         use tauri::LogicalSize;
