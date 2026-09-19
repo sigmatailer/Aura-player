@@ -1,0 +1,47 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Rust & Mobile build outputs
+src-tauri/target/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/build/
+src-tauri/gen/apple/build/
+*.apk
+*.ipa
+Payload/
+
+# Scratch & test scripts
+*.cjs
+*.py
+test*.js
+test*.rs
+b_player.js
+parse.js
+sc.js
+crop-icon.ps1
+process-icon.cjs
+*.html
+!index.html
+

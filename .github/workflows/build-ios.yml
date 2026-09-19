@@ -1,0 +1,61 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0.0" --locked || cargo install tauri-cli --locked
+
+      - name: Initialize iOS Project (if needed)
+        run: |
+          if [ ! -d "src-tauri/gen/apple" ]; then
+            cargo tauri ios init
+          fi
+
+      - name: Build iOS App (Unsigned)
+        run: |
+          cargo tauri ios build --no-sign
+
+      - name: Package into IPA
+        run: |
+          mkdir -p Payload
+          # Locate the .app bundle built by Xcode / Tauri
+          APP_DIR=$(find src-tauri/gen/apple -name "*.app" -type d | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "Error: No .app bundle found!"
+            exit 1
+          fi
+          echo "Copying $APP_DIR to Payload/"
+          cp -r "$APP_DIR" Payload/
+          zip -r Aura.ipa Payload/
+          ls -lh Aura.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aura-iOS-unsigned
+          path: Aura.ipa
+          retention-days: 14
