@@ -699,43 +699,29 @@ async fn get_yandex_stream(track_id: String, token: String) -> Result<String, St
     // 4. Construct final MP3 URL
     let final_url = format!("https://{}/get-mp3/{}/{}{}", host, hash, ts, path);
     
-    // Download the MP3 file to a temporary directory to bypass CORS
-    use std::io::Write;
-    let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join(format!("yandex_{}_{}k.mp3", track_id, highest_bitrate));
-    
-    // Verify file exists and is larger than a 30s snippet (> 1.2 MB)
-    let needs_download = !file_path.exists() || file_path.metadata().map(|m| m.len()).unwrap_or(0) < 1_200_000;
-    if needs_download {
-        let mp3_resp = client.get(&final_url).send().await.map_err(|e| e.to_string())?;
-        let bytes = mp3_resp.bytes().await.map_err(|e| e.to_string())?;
-        if bytes.len() < 1_200_000 {
-            let _ = std::fs::remove_file(&file_path);
-            return Err("preview_only".to_string());
+    // 5. Verify if track is full or preview (< 1.2 MB is a 25-30s snippet)
+    let is_preview = if let Ok(resp) = client.head(&final_url).send().await {
+        if let Some(cl) = resp.headers().get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok()) 
+        {
+            cl < 1_200_000
+        } else {
+            false
         }
-        let mut file = std::fs::File::create(&file_path).map_err(|e| e.to_string())?;
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
+    } else {
+        false
+    };
+
+    if is_preview {
+        return Err("preview_only".to_string());
     }
-    
-    // Return a special prefix so the frontend knows it's a local file
-    Ok(format!("local:{}", file_path.to_string_lossy()))
+
+    Ok(final_url)
 }
 
 #[tauri::command]
-async fn get_full_audio_stream(query: String, track_id: String) -> Result<String, String> {
-    use std::io::Write;
-    let temp_dir = std::env::temp_dir();
-    let clean_id = sanitize_filename(&track_id);
-    let cached_path = temp_dir.join(format!("full_stream_{}.mp3", clean_id));
-
-    if cached_path.exists() {
-        if let Ok(meta) = cached_path.metadata() {
-            if meta.len() > 1_000_000 {
-                return Ok(format!("local:{}", cached_path.to_string_lossy()));
-            }
-        }
-    }
-
+async fn get_full_audio_stream(query: String, _track_id: String) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         .timeout(std::time::Duration::from_secs(12))
@@ -754,16 +740,7 @@ async fn get_full_audio_stream(query: String, track_id: String) -> Result<String
                 }
             }
             if !direct_url.is_empty() {
-                if let Ok(mp3_resp) = client.get(&direct_url).send().await {
-                    if let Ok(bytes) = mp3_resp.bytes().await {
-                        if bytes.len() > 500_000 {
-                            if let Ok(mut f) = std::fs::File::create(&cached_path) {
-                                let _ = f.write_all(&bytes);
-                                return Ok(format!("local:{}", cached_path.to_string_lossy()));
-                            }
-                        }
-                    }
-                }
+                return Ok(direct_url);
             }
         }
     }
@@ -777,16 +754,7 @@ async fn get_full_audio_stream(query: String, track_id: String) -> Result<String
                     first.get("clientId").and_then(|v| v.as_str())
                 ) {
                     if let Ok(stream_url) = get_soundcloud_stream(sc_id.to_string(), sc_client.to_string()).await {
-                        if let Ok(stream_resp) = client.get(&stream_url).send().await {
-                            if let Ok(bytes) = stream_resp.bytes().await {
-                                if bytes.len() > 500_000 {
-                                    if let Ok(mut f) = std::fs::File::create(&cached_path) {
-                                        let _ = f.write_all(&bytes);
-                                        return Ok(format!("local:{}", cached_path.to_string_lossy()));
-                                    }
-                                }
-                            }
-                        }
+                        return Ok(stream_url);
                     }
                 }
             }
@@ -795,16 +763,7 @@ async fn get_full_audio_stream(query: String, track_id: String) -> Result<String
 
     // Attempt 3: YouTube fallback
     if let Ok(yt_stream_url) = get_youtube_stream(query).await {
-        if let Ok(yt_resp) = client.get(&yt_stream_url).send().await {
-            if let Ok(bytes) = yt_resp.bytes().await {
-                if bytes.len() > 500_000 {
-                    if let Ok(mut f) = std::fs::File::create(&cached_path) {
-                        let _ = f.write_all(&bytes);
-                        return Ok(format!("local:{}", cached_path.to_string_lossy()));
-                    }
-                }
-            }
-        }
+        return Ok(yt_stream_url);
     }
 
     Err("Не удалось загрузить полный трек ни из одного источника".to_string())

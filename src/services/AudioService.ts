@@ -9,6 +9,8 @@ import { Track } from '../types';
 import { fetchMoreWaveTracks } from './WaveRecommendationService';
 
 export const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+export const isMobile = isIOS || isAndroid || (typeof navigator !== 'undefined' && /Mobi|Tablet|iPad|iPhone|Android/i.test(navigator.userAgent));
 
 export class AudioService {
   private audio: HTMLAudioElement;
@@ -25,7 +27,10 @@ export class AudioService {
 
   constructor() {
     this.audio = new Audio();
-    this.audio.crossOrigin = 'anonymous'; // Now works because we download streams locally!
+    // Do not set crossOrigin on mobile (iOS/Android) so native stream playback has no CORS restrictions
+    if (!isMobile) {
+      this.audio.crossOrigin = 'anonymous';
+    }
     
     // Инициализируем громкость с учетом кривой
     this.applyVolume(usePlayerStore.getState().volume ?? 1);
@@ -101,6 +106,14 @@ export class AudioService {
       }
     }
 
+    this.audio.addEventListener('stalled', () => {
+      const state = usePlayerStore.getState();
+      if (!this.isLoadingTrack && state.isPlaying && this.audio.paused && this.audio.src && this.audio.readyState >= 2) {
+        this.resumeAudioContext();
+        this.audio.play().catch(() => {});
+      }
+    });
+
     this.audio.addEventListener('error', () => {
       console.warn('Audio element error:', this.audio.error);
     });
@@ -141,8 +154,8 @@ export class AudioService {
         this.applyVolume(state.volume);
       }
       
-      // Sync EQ
-      const hasCustomEq = state.eqBands.some(val => val !== 0) || state.eqPreAmp !== 0;
+      // Sync EQ (only initialize if custom EQ is set and not on mobile)
+      const hasCustomEq = !isMobile && (state.eqBands.some(val => val !== 0) || state.eqPreAmp !== 0);
       if (hasCustomEq) {
         this.initEqualizer();
       }
@@ -251,6 +264,12 @@ export class AudioService {
   }
 
   public initEqualizer() {
+    // iOS WebKit and Android WebView immediately suspend AudioContext in the background,
+    // which completely cuts off audio if createMediaElementSource is connected.
+    // Furthermore, on Android WebView, createMediaElementSource has a known Chromium bug
+    // that stalls audio buffers after 20-30 seconds.
+    // Keep native direct audio element playback on mobile platforms to guarantee 100% reliable background playback!
+    if (isMobile) return;
     if (this.audioCtx) return;
     try {
       this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
@@ -351,7 +370,7 @@ export class AudioService {
   }
 
   public resumeAudioContext() {
-    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+    if (!isMobile && this.audioCtx && this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
     }
   }
@@ -653,7 +672,17 @@ export class AudioService {
 
     if (cachedLocalPath) {
       if (loadId !== this.currentLoadId) return;
-      this.audio.src = convertFileSrc(cachedLocalPath);
+      if (isMobile) {
+        try {
+          const fileData = await readFile(cachedLocalPath);
+          const blob = new Blob([fileData], { type: 'audio/mpeg' });
+          this.audio.src = URL.createObjectURL(blob);
+        } catch {
+          this.audio.src = convertFileSrc(cachedLocalPath);
+        }
+      } else {
+        this.audio.src = convertFileSrc(cachedLocalPath);
+      }
     } else if (isYandex) {
       try {
         const yaToken = localStorage.getItem('yandex_access_token');
@@ -689,7 +718,17 @@ export class AudioService {
         
         if (audioUrl.startsWith('local:')) {
           const actualPath = audioUrl.substring(6);
-          this.audio.src = convertFileSrc(actualPath);
+          if (isMobile) {
+            try {
+              const fileData = await readFile(actualPath);
+              const blob = new Blob([fileData], { type: 'audio/mpeg' });
+              this.audio.src = URL.createObjectURL(blob);
+            } catch {
+              this.audio.src = convertFileSrc(actualPath);
+            }
+          } else {
+            this.audio.src = convertFileSrc(actualPath);
+          }
         } else {
           this.audio.src = audioUrl;
         }
@@ -713,7 +752,17 @@ export class AudioService {
       this.audio.src = track.filePath;
     } else {
       if (loadId !== this.currentLoadId) return;
-      this.audio.src = convertFileSrc(track.filePath);
+      if (isMobile) {
+        try {
+          const fileData = await readFile(track.filePath);
+          const blob = new Blob([fileData], { type: 'audio/mpeg' });
+          this.audio.src = URL.createObjectURL(blob);
+        } catch {
+          this.audio.src = convertFileSrc(track.filePath);
+        }
+      } else {
+        this.audio.src = convertFileSrc(track.filePath);
+      }
     }
     
     // Final check before playback
