@@ -53,10 +53,10 @@ class PocketBaseService {
     return this.pb.authStore.record?.id || null;
   }
 
-  public async login(email: string, pass: string) {
+  public async login(identity: string, pass: string) {
     try {
       useAuthStore.getState().setSyncStatus('Авторизация...');
-      const authData = await this.pb.collection('users').authWithPassword(email, pass);
+      const authData = await this.pb.collection('users').authWithPassword(identity.trim(), pass);
       const record = authData.record;
       useAuthStore.getState().setUser({
         id: record.id,
@@ -73,24 +73,52 @@ class PocketBaseService {
     } catch (err: any) {
       console.error('PocketBase login error:', err);
       useAuthStore.getState().setSyncStatus('Ошибка входа');
-      return { success: false, error: err?.message || 'Ошибка входа' };
+      let msg = 'Ошибка входа';
+      if (err?.status === 0 || err?.name === 'ClientResponseError' && err?.status === 0) {
+        msg = 'Не удалось подключиться к серверу. Проверьте интернет или сетевое соединение.';
+      } else if (err?.status === 400) {
+        msg = 'Неверная почта/логин или пароль';
+      } else if (err?.data?.message) {
+        msg = err.data.message;
+      } else if (err?.message) {
+        msg = err.message;
+      }
+      return { success: false, error: msg };
     }
   }
 
-  public async register(email: string, pass: string, passConfirm: string, name?: string) {
+  public async register(email: string, pass: string, passConfirm: string, name: string) {
     try {
       useAuthStore.getState().setSyncStatus('Регистрация...');
+      const cleanName = name.trim();
+      const cleanEmail = email.trim();
       await this.pb.collection('users').create({
-        email,
+        email: cleanEmail,
         password: pass,
         passwordConfirm: passConfirm,
-        name: name || email.split('@')[0],
+        name: cleanName,
       });
-      return await this.login(email, pass);
+      return await this.login(cleanEmail, pass);
     } catch (err: any) {
       console.error('PocketBase register error:', err);
       useAuthStore.getState().setSyncStatus('Ошибка регистрации');
-      return { success: false, error: err?.message || 'Ошибка регистрации' };
+      let msg = 'Ошибка регистрации';
+      if (err?.status === 0) {
+        msg = 'Не удалось подключиться к серверу. Проверьте подключение к интернету.';
+      } else if (err?.data?.email?.code === 'validation_not_unique') {
+        msg = 'Пользователь с такой почтой уже зарегистрирован';
+      } else if (err?.data?.name?.code === 'validation_not_unique') {
+        msg = `Имя пользователя "${name}" уже занято. Придумайте другое`;
+      } else if (err?.data?.passwordConfirm) {
+        msg = 'Пароли не совпадают';
+      } else if (err?.data?.password) {
+        msg = 'Пароль должен содержать минимум 8 символов';
+      } else if (err?.data?.email) {
+        msg = 'Некорректный адрес электронной почты';
+      } else if (err?.message && !err.message.includes('Something went wrong')) {
+        msg = err.message;
+      }
+      return { success: false, error: msg };
     }
   }
 

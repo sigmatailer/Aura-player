@@ -39,7 +39,10 @@ export const AuthModal: React.FC = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
+    if (!name.trim()) {
+      setErrorMsg('Пожалуйста, укажите уникальное имя пользователя (логин)');
+      return;
+    }
     if (!email || !password || !passwordConfirm) {
       setErrorMsg('Заполните все обязательные поля');
       return;
@@ -180,13 +183,14 @@ export const AuthModal: React.FC = () => {
               {isRegisterMode && (
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
-                    <User size={13} /> Ваше имя
+                    <User size={13} /> Уникальное имя (логин)
                   </label>
                   <input
                     type="text"
+                    required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Например, Александр"
+                    placeholder="Например, alex_aura"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-main)] focus:border-[var(--accent)] text-xs text-[var(--text-main)] outline-none transition-all placeholder-[var(--text-secondary)]/40"
                   />
                 </div>
@@ -194,14 +198,14 @@ export const AuthModal: React.FC = () => {
 
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
-                  <Mail size={13} /> Электронная почта
+                  <Mail size={13} /> {isRegisterMode ? 'Электронная почта' : 'Почта или имя пользователя'}
                 </label>
                 <input
-                  type="email"
+                  type={isRegisterMode ? "email" : "text"}
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
+                  placeholder={isRegisterMode ? "name@example.com" : "name@example.com или логин"}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-main)] focus:border-[var(--accent)] text-xs text-[var(--text-main)] outline-none transition-all placeholder-[var(--text-secondary)]/40"
                 />
               </div>

@@ -41,7 +41,7 @@ for (const file of appDelegates) {
 // 2. Inject UIBackgroundModes into Info.plist
 const plists = findFiles('src-tauri/gen/apple', /Info\.plist$/);
 for (const file of plists) {
-  let content = fs.readFileSync(file, 'utf8');
+  let modified = false;
   if (!content.includes('UIBackgroundModes')) {
     const bgModes = `
 	<key>UIBackgroundModes</key>
@@ -51,8 +51,24 @@ for (const file of plists) {
 </dict>
 </plist>`;
     content = content.replace(/<\/dict>\s*<\/plist>/, bgModes);
-    fs.writeFileSync(file, content, 'utf8');
+    modified = true;
     console.log('Successfully injected UIBackgroundModes into', file);
+  }
+  if (!content.includes('NSAppTransportSecurity')) {
+    const ats = `
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>`;
+    content = content.replace(/<\/dict>\s*<\/plist>/, ats);
+    modified = true;
+    console.log('Successfully injected NSAppTransportSecurity into', file);
+  }
+  if (modified) {
+    fs.writeFileSync(file, content, 'utf8');
   }
 }
 
