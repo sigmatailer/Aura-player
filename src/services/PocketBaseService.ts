@@ -2,7 +2,9 @@ import PocketBase from 'pocketbase';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCollectionStore, Playlist, setCollectionSyncListener } from '../store/useCollectionStore';
 import { Track } from '../types';
-import { isAndroid, isIOS } from './AudioService';
+
+const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
 class PocketBaseService {
   public pb: PocketBase;
