@@ -7,6 +7,8 @@ import { usePlayerStore } from '../store/usePlayerStore';
 import { useCacheStore } from '../store/useCacheStore';
 import { Track } from '../types';
 import { fetchMoreWaveTracks } from './WaveRecommendationService';
+import { waveAnalyticsService } from './WaveAnalyticsService';
+import { pocketBaseService } from './PocketBaseService';
 
 export const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
@@ -38,8 +40,15 @@ export class AudioService {
     // Подписываемся на события аудио
     this.audio.addEventListener('timeupdate', () => {
       usePlayerStore.getState().setProgress(this.audio.currentTime);
-      if (Math.floor(this.audio.currentTime) % 4 === 0) {
+      const curSec = Math.floor(this.audio.currentTime);
+      if (curSec % 4 === 0) {
         this.updateMediaSessionPosition();
+      }
+      if (curSec > 0 && curSec % 10 === 0) {
+        const curTrack = usePlayerStore.getState().queue[usePlayerStore.getState().currentTrackIndex];
+        if (curTrack) {
+          pocketBaseService.updateDevicePresence(curTrack, this.audio.currentTime, true);
+        }
       }
     });
 
@@ -47,11 +56,19 @@ export class AudioService {
       if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
+      const curTrack = usePlayerStore.getState().queue[usePlayerStore.getState().currentTrackIndex];
+      if (curTrack) {
+        pocketBaseService.updateDevicePresence(curTrack, this.audio.currentTime, true);
+      }
     });
 
     this.audio.addEventListener('pause', () => {
       if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
+      }
+      const curTrack = usePlayerStore.getState().queue[usePlayerStore.getState().currentTrackIndex];
+      if (curTrack) {
+        pocketBaseService.updateDevicePresence(curTrack, this.audio.currentTime, false);
       }
     });
 
@@ -125,10 +142,21 @@ export class AudioService {
       if (isNaN(this.audio.duration) || this.audio.duration <= 0) return;
       if (Math.abs(this.audio.currentTime - this.audio.duration) > 2) return;
 
+      const state = usePlayerStore.getState();
+      const currentTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+      if (currentTrack) {
+        waveAnalyticsService.logTrackEvent({
+          track: currentTrack,
+          listenedSeconds: this.audio.currentTime,
+          totalDuration: this.audio.duration || currentTrack.duration,
+          isSkipped: false,
+          isCompleted: true
+        });
+      }
+
       // Immediately pause old track to prevent any audio bleed
       this.audio.pause();
 
-      const state = usePlayerStore.getState();
       state.nextTrack(true);
       
       // Fix: Если трек остался тот же (например, включен repeat "one"), вручную перезапускаем плеер с 0:00
@@ -179,17 +207,33 @@ export class AudioService {
         this.audio.pause();
         this.audio.currentTime = 0;
         this.resumeAudioContext();
+        if (prevTrack) {
+          const listened = prevState.progress || 0;
+          const dur = prevTrack.duration || 0;
+          const isCompleted = dur > 5 && listened >= dur * 0.75;
+          const isSkipped = !isCompleted && listened < 25;
+          waveAnalyticsService.logTrackEvent({
+            track: prevTrack,
+            listenedSeconds: listened,
+            totalDuration: dur,
+            isSkipped,
+            isCompleted
+          });
+        }
+
         if (!currentTrack) {
           this.currentLoadId++;
           this.isLoadingTrack = false;
           this.audio.removeAttribute('src');
           this.audio.load();
           this.updateMediaSession(null, false);
+          pocketBaseService.updateDevicePresence(null, 0, false);
           return;
         }
         this._loadTrack(currentTrack, state.isPlaying);
         this.updateMediaSession(currentTrack, state.isPlaying);
         state.addToHistory(currentTrack);
+        pocketBaseService.updateDevicePresence(currentTrack, 0, state.isPlaying);
 
         // Infinite Wave: if playing wave tracks and near end of queue, fetch next batch from Yandex Wave
         if (currentTrack.id.startsWith('vibe_')) {

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Cloud, Check, Palette, 
   Upload, Trash2, Sparkles, HardDrive, 
-  RefreshCw, Search, Copy, ExternalLink, Loader2
+  RefreshCw, Search, Copy, ExternalLink, Loader2, User
 } from 'lucide-react';
+import { AccountTab } from './AccountTab';
 import { useSettingsStore } from '../store/usePlayerStore';
 import { useThemeStore, isVideoUrl, PRESET_THEMES, AVAILABLE_FONTS, TRACK_FONT_OPTIONS } from '../store/useThemeStore';
 import { useCacheStore, CacheStats } from '../store/useCacheStore';
@@ -246,7 +247,7 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { yandexToken, setYandexToken } = useSettingsStore();
   
-  const [activeTab, setActiveTab] = useState<'services' | 'customization' | 'appearance' | 'cache'>('services');
+  const [activeTab, setActiveTab] = useState<'account' | 'services' | 'customization' | 'appearance' | 'cache'>('account');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Custom theme creation state
@@ -384,6 +385,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   // Sidebar items definitions
   const sidebarItems = [
+    { id: 'account' as const, label: 'Аккаунт и Синхронизация', icon: User, group: 'main' },
     { id: 'services' as const, label: 'Сервисы', icon: Cloud, group: 'main' },
     { id: 'cache' as const, label: 'Хранилище', icon: HardDrive, group: 'main' },
     { id: 'customization' as const, label: 'Темы', icon: Palette, group: 'appearance' },
@@ -490,6 +492,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         {/* Right Main Content Area */}
         <div className={`flex-1 flex flex-col p-6 sm:p-7 md:p-8 overflow-y-auto overflow-x-hidden scrollbar-hide [&::-webkit-scrollbar]:hidden [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0 [scrollbar-width:none] [-ms-overflow-style:none] ${customWallpaper ? 'bg-black/20' : 'bg-[var(--bg-main)]'}`}>
           
+          {/* Section: Account & Sync */}
+          {activeTab === 'account' && <AccountTab />}
+
           {/* Section 1: Services */}
           {activeTab === 'services' && (
             <div className="space-y-5 animate-in fade-in duration-200">

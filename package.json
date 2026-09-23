@@ -21,6 +21,7 @@
     "framer-motion": "^13.1.0",
     "lucide-react": "^1.33.0",
     "music-metadata-browser": "^2.5.11",
+    "pocketbase": "^0.28.1",
     "process": "^0.11.10",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

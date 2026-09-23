@@ -8,8 +8,9 @@ import TitleBar from './components/TitleBar';
 import { SettingsModal } from './components/SettingsModal';
 import { EqualizerModal } from './components/EqualizerModal';
 import BottomPlayer from './components/BottomPlayer';
-import { Settings, Library, Search, Heart, Radio } from 'lucide-react';
+import { Settings, Library, Search, Heart, Radio, User } from 'lucide-react';
 import { useDiscordRPC } from './hooks/useDiscordRPC';
+import { useAuthStore } from './store/useAuthStore';
 
 import { Collections } from './components/Collections';
 import { GlobalModal } from './components/GlobalModal';
@@ -33,6 +34,7 @@ function App() {
   const miniPlayerStyle = usePlayerStore(state => state.miniPlayerStyle);
   const { queue, currentTrackIndex, setQueue } = usePlayerStore();
   const [isFetchingVibe, setIsFetchingVibe] = useState(false);
+  const user = useAuthStore(state => state.user);
   const { customWallpaper, wallpaperBlur, wallpaperOpacity, wallpaperSpeed } = useThemeStore();
   const wallpaperVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -230,7 +232,24 @@ function App() {
             </button>
           </div>
 
-          <div className="mt-auto flex flex-col gap-4 w-full items-center shrink-0">
+          <div className="mt-auto flex flex-col gap-3 w-full items-center shrink-0">
+            <button 
+              className={`p-2.5 rounded-xl transition-all duration-200 relative ${user ? 'bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+              onClick={() => setIsSettingsOpen(true)}
+              data-tooltip={user ? (user.name || user.email) : "Войти в аккаунт"}
+              data-tooltip-pos="right"
+            >
+              {user ? (
+                <div className="w-6 h-6 rounded-lg bg-[var(--accent)] text-[var(--text-main)] font-black text-xs flex items-center justify-center">
+                  {(user.name || user.email).charAt(0).toUpperCase()}
+                </div>
+              ) : (
+                <User size={20} strokeWidth={1.5} />
+              )}
+              {user && (
+                <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[var(--bg-main)]" />
+              )}
+            </button>
             <button 
               className="p-3 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)] transition-all duration-200"
               onClick={() => setIsSettingsOpen(true)}
@@ -311,11 +330,17 @@ function App() {
           <span className="text-[10px]">Любимое</span>
         </button>
         <button 
-          className="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-colors"
+          className="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-colors relative"
           onClick={() => setIsSettingsOpen(true)}
         >
-          <Settings size={20} strokeWidth={1.75} />
-          <span className="text-[10px]">Опции</span>
+          {user ? (
+            <div className="w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--text-main)] text-[10px] font-bold flex items-center justify-center shadow-sm">
+              {(user.name || user.email).charAt(0).toUpperCase()}
+            </div>
+          ) : (
+            <Settings size={20} strokeWidth={1.75} />
+          )}
+          <span className="text-[10px]">{user ? 'Аккаунт' : 'Опции'}</span>
         </button>
       </nav>
 

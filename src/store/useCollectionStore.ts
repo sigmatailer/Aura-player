@@ -8,6 +8,17 @@ export interface Playlist {
   tracks: Track[];
 }
 
+export type CollectionSyncListener = {
+  onTrackLiked?: (track: Track, isLiked: boolean) => void;
+  onPlaylistModified?: (playlist: Playlist) => void;
+  onPlaylistDeleted?: (name: string) => void;
+};
+
+let syncListener: CollectionSyncListener | null = null;
+export const setCollectionSyncListener = (listener: CollectionSyncListener) => {
+  syncListener = listener;
+};
+
 interface CollectionState {
   likedTracks: Track[];
   playlists: Playlist[];
@@ -92,8 +103,10 @@ export const useCollectionStore = create<CollectionState>((set, get) => {
       let newLiked;
       if (exists) {
         newLiked = state.likedTracks.filter(t => t.id !== track.id);
+        syncListener?.onTrackLiked?.(track, false);
       } else {
         newLiked = [track, ...state.likedTracks];
+        syncListener?.onTrackLiked?.(track, true);
       }
       localStorage.setItem('liked_tracks', JSON.stringify(newLiked));
       return { likedTracks: newLiked };
@@ -112,13 +125,16 @@ export const useCollectionStore = create<CollectionState>((set, get) => {
       };
       const newPlaylists = [...state.playlists, newPlaylist];
       localStorage.setItem('playlists', JSON.stringify(newPlaylists));
+      syncListener?.onPlaylistModified?.(newPlaylist);
       return { playlists: newPlaylists };
     }),
     
     updatePlaylist: (id, updates) => set((state) => {
       const newPlaylists = state.playlists.map(p => {
         if (p.id === id) {
-          return { ...p, ...updates };
+          const updated = { ...p, ...updates };
+          syncListener?.onPlaylistModified?.(updated);
+          return updated;
         }
         return p;
       });
@@ -127,6 +143,10 @@ export const useCollectionStore = create<CollectionState>((set, get) => {
     }),
 
     deletePlaylist: (id) => set((state) => {
+      const target = state.playlists.find(p => p.id === id);
+      if (target) {
+        syncListener?.onPlaylistDeleted?.(target.name);
+      }
       const newPlaylists = state.playlists.filter(p => p.id !== id);
       localStorage.setItem('playlists', JSON.stringify(newPlaylists));
       return { playlists: newPlaylists };
@@ -135,7 +155,9 @@ export const useCollectionStore = create<CollectionState>((set, get) => {
     addTrackToPlaylist: (playlistId, track) => set((state) => {
       const newPlaylists = state.playlists.map(p => {
         if (p.id === playlistId && !p.tracks.some(t => t.id === track.id)) {
-          return { ...p, tracks: [...p.tracks, track] };
+          const updated = { ...p, tracks: [...p.tracks, track] };
+          syncListener?.onPlaylistModified?.(updated);
+          return updated;
         }
         return p;
       });
@@ -146,7 +168,9 @@ export const useCollectionStore = create<CollectionState>((set, get) => {
     removeTrackFromPlaylist: (playlistId, trackId) => set((state) => {
       const newPlaylists = state.playlists.map(p => {
         if (p.id === playlistId) {
-          return { ...p, tracks: p.tracks.filter(t => t.id !== trackId) };
+          const updated = { ...p, tracks: p.tracks.filter(t => t.id !== trackId) };
+          syncListener?.onPlaylistModified?.(updated);
+          return updated;
         }
         return p;
       });

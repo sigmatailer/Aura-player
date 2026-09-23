@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Track } from '../types';
 import { usePlayerStore, useSettingsStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
+import { waveAnalyticsService } from './WaveAnalyticsService';
 
 export interface WaveTuningOptions {
   mood?: 'all' | 'energetic' | 'calm' | 'happy' | 'sad';
@@ -290,8 +291,23 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
     return { tracks, profile, artists };
   }
 
+  // Filter disliked tracks and prioritize preferred artists using Wave Analytics
+  const filteredRawTracks = collectedRawTracks.filter((t: any) => {
+    const rawId = String(t.id);
+    const artist = t.artists?.map((a: any) => a.name).join(', ') || '';
+    if (waveAnalyticsService.isTrackDisliked(rawId) || waveAnalyticsService.isTrackDisliked(`yandex:${rawId}`)) {
+      return false;
+    }
+    if (artist && waveAnalyticsService.isArtistDisliked(artist)) {
+      return false;
+    }
+    return true;
+  });
+
+  const rawTracksToUse = filteredRawTracks.length >= 8 ? filteredRawTracks : collectedRawTracks;
+
   // Convert directly into Track models PRESERVING Yandex's official sequence order!
-  const tracks: Track[] = collectedRawTracks.map((t: any) => ({
+  const tracks: Track[] = rawTracksToUse.map((t: any) => ({
     id: 'vibe_' + t.id + '_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
     title: t.title,
     artist: t.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist',
