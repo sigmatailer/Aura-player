@@ -12,6 +12,7 @@ class PocketBaseService {
   private unsubscribePlaylists: (() => void) | null = null;
   private isSyncingFavorites: boolean = false;
   private isSyncingPlaylists: boolean = false;
+  private isInternalSync: boolean = false;
 
   constructor() {
     const url = useAuthStore.getState().serverUrl || 'http://31.77.15.175:8090';
@@ -29,6 +30,10 @@ class PocketBaseService {
       });
       useAuthStore.getState().setToken(this.pb.authStore.token);
       this.subscribeRealtime();
+      // Auto sync in background on app start
+      setTimeout(() => {
+        this.syncAll().catch(err => console.warn('Startup syncAll error:', err));
+      }, 500);
     }
 
     // Register collection store sync listener
@@ -74,7 +79,7 @@ class PocketBaseService {
       console.error('PocketBase login error:', err);
       useAuthStore.getState().setSyncStatus('Ошибка входа');
       let msg = 'Ошибка входа';
-      if (err?.status === 0 || err?.name === 'ClientResponseError' && err?.status === 0) {
+      if (err?.status === 0 || (err?.name === 'ClientResponseError' && err?.status === 0)) {
         msg = 'Не удалось подключиться к серверу. Проверьте интернет или сетевое соединение.';
       } else if (err?.status === 400) {
         msg = 'Неверная почта/логин или пароль';
@@ -157,6 +162,9 @@ class PocketBaseService {
     this.isSyncingFavorites = true;
 
     try {
+      const storedSynced = localStorage.getItem('synced_favorite_ids');
+      const syncedIds = new Set<string>(storedSynced ? JSON.parse(storedSynced) : []);
+
       const records = await this.pb.collection('favorites').getFullList({
         filter: `user = "${userId}"`,
         sort: '-created'
@@ -176,38 +184,54 @@ class PocketBaseService {
       const collectionStore = useCollectionStore.getState();
       const localLiked = collectionStore.likedTracks;
       const serverMap = new Map(serverTracks.map(t => [t.id, t]));
-      const localMap = new Map(localLiked.map(t => [t.id, t]));
 
-      // 1. Upload local favorites that are not on server
+      // 1. Upload local favorites that are NOT on server AND NOT previously synced
       for (const track of localLiked) {
         if (!serverMap.has(track.id)) {
-          try {
-            await this.pb.collection('favorites').create({
-              user: userId,
-              track_id: track.id,
-              title: track.title,
-              artist: track.artist,
-              album: track.album || '',
-              cover_url: track.originalCoverUrl || '',
-              duration: track.duration || 0,
-              file_path: track.filePath || ''
-            });
-          } catch (e) {
-            console.warn('Failed to upload favorite to cloud:', e);
+          if (!syncedIds.has(track.id)) {
+            try {
+              await this.pb.collection('favorites').create({
+                user: userId,
+                track_id: track.id,
+                title: track.title,
+                artist: track.artist,
+                album: track.album || '',
+                cover_url: track.originalCoverUrl || '',
+                duration: track.duration || 0,
+                file_path: track.filePath || ''
+              });
+              serverMap.set(track.id, track);
+            } catch (e) {
+              console.warn('Failed to upload favorite to cloud:', e);
+            }
           }
         }
       }
 
-      // 2. Add server favorites to local store if missing
-      const merged: Track[] = [...localLiked];
-      for (const track of serverTracks) {
-        if (!localMap.has(track.id)) {
-          merged.push(track);
+      // 2. Assemble final liked list: keep tracks on server or newly added local ones
+      const finalLiked: Track[] = [];
+      const addedIds = new Set<string>();
+
+      for (const track of localLiked) {
+        if (serverMap.has(track.id) || !syncedIds.has(track.id)) {
+          finalLiked.push(track);
+          addedIds.add(track.id);
         }
       }
 
-      if (merged.length !== localLiked.length) {
-        collectionStore.reorderLikedTracks(merged);
+      for (const track of serverTracks) {
+        if (!addedIds.has(track.id)) {
+          finalLiked.push(track);
+          addedIds.add(track.id);
+        }
+      }
+
+      collectionStore.reorderLikedTracks(finalLiked);
+      const newSyncedIds = finalLiked.map(t => t.id);
+      try {
+        localStorage.setItem('synced_favorite_ids', JSON.stringify(newSyncedIds));
+      } catch (e) {
+        console.warn('Failed to save synced_favorite_ids:', e);
       }
     } catch (err) {
       console.error('syncFavorites error:', err);
@@ -221,8 +245,15 @@ class PocketBaseService {
     if (!userId) return;
 
     try {
+      const storedSynced = localStorage.getItem('synced_favorite_ids');
+      const syncedIds = new Set<string>(storedSynced ? JSON.parse(storedSynced) : []);
+
       if (isLiked) {
-        // Upload to server if not exists
+        syncedIds.add(track.id);
+        try {
+          localStorage.setItem('synced_favorite_ids', JSON.stringify(Array.from(syncedIds)));
+        } catch {}
+
         const existing = await this.pb.collection('favorites').getList(1, 1, {
           filter: `user = "${userId}" && track_id = "${track.id}"`
         });
@@ -239,7 +270,11 @@ class PocketBaseService {
           });
         }
       } else {
-        // Remove from server
+        syncedIds.delete(track.id);
+        try {
+          localStorage.setItem('synced_favorite_ids', JSON.stringify(Array.from(syncedIds)));
+        } catch {}
+
         const existing = await this.pb.collection('favorites').getList(1, 1, {
           filter: `user = "${userId}" && track_id = "${track.id}"`
         });
@@ -259,48 +294,98 @@ class PocketBaseService {
 
     try {
       const records = await this.pb.collection('playlists').getFullList({
-        filter: `user = "${userId}"`
+        filter: `user = "${userId}"`,
+        sort: '-updated'
       });
 
-      const serverPlaylists: Playlist[] = records.map(r => ({
+      const serverPlaylists = records.map(r => ({
         id: r.id,
         name: r.name,
-        tracks: r.tracks_json || []
+        coverUrl: r.cover_url || undefined,
+        tracks: Array.isArray(r.tracks_json) ? r.tracks_json : [],
+        cloudId: r.id,
+        updatedAt: new Date(r.updated).getTime()
       }));
 
       const collectionStore = useCollectionStore.getState();
-      const localPlaylists = collectionStore.playlists;
+      const localPlaylists = [...collectionStore.playlists];
 
-      const serverMap = new Map(serverPlaylists.map(p => [p.name, p]));
-      const localMap = new Map(localPlaylists.map(p => [p.name, p]));
+      const serverById = new Map(serverPlaylists.map(p => [p.id, p]));
+      const serverByName = new Map(serverPlaylists.map(p => [p.name.trim().toLowerCase(), p]));
 
-      // 1. Upload local playlists to server if not present
+      const localByCloudId = new Map(localPlaylists.filter(p => p.cloudId).map(p => [p.cloudId!, p]));
+      const localByName = new Map(localPlaylists.map(p => [p.name.trim().toLowerCase(), p]));
+
+      // 1. Process server playlists: merge into local
+      for (const serverPl of serverPlaylists) {
+        const localPl = localByCloudId.get(serverPl.id) || localByName.get(serverPl.name.trim().toLowerCase());
+        if (localPl) {
+          localPl.cloudId = serverPl.id;
+          const serverTime = serverPl.updatedAt || 0;
+          const localTime = localPl.updatedAt || 0;
+
+          // If server is newer (or equal/close) or local has no updatedAt, adopt server data
+          if (serverTime >= localTime) {
+            localPl.tracks = serverPl.tracks;
+            if (serverPl.coverUrl !== undefined) {
+              localPl.coverUrl = serverPl.coverUrl || undefined;
+            }
+            localPl.name = serverPl.name;
+            localPl.updatedAt = serverTime;
+          } else {
+            // Local is newer: push local tracks & cover to server
+            try {
+              await this.pb.collection('playlists').update(serverPl.id, {
+                name: localPl.name,
+                tracks_json: localPl.tracks,
+                cover_url: localPl.coverUrl || ''
+              });
+            } catch (err) {
+              console.warn('Failed to update playlist on server:', err);
+            }
+          }
+        } else {
+          // New playlist from another device
+          localPlaylists.push({
+            id: 'pl_' + serverPl.id,
+            name: serverPl.name,
+            coverUrl: serverPl.coverUrl,
+            tracks: serverPl.tracks,
+            cloudId: serverPl.id,
+            updatedAt: serverPl.updatedAt
+          });
+        }
+      }
+
+      // 2. Process local playlists: upload new local, or purge deleted
+      const finalPlaylists: Playlist[] = [];
       for (const pl of localPlaylists) {
-        if (!serverMap.has(pl.name)) {
+        if (pl.cloudId && !serverById.has(pl.cloudId)) {
+          // Deleted on server on another device, remove locally
+          continue;
+        }
+
+        if (!pl.cloudId && !serverByName.has(pl.name.trim().toLowerCase())) {
+          // Newly created local playlist: upload to server
           try {
-            await this.pb.collection('playlists').create({
+            const created = await this.pb.collection('playlists').create({
               user: userId,
               name: pl.name,
-              tracks_json: pl.tracks
+              tracks_json: pl.tracks,
+              cover_url: pl.coverUrl || ''
             });
+            pl.cloudId = created.id;
+            pl.updatedAt = new Date(created.updated).getTime();
           } catch (e) {
-            console.warn('Failed to upload playlist:', e);
+            console.warn('Failed to upload new local playlist to cloud:', e);
           }
         }
+        finalPlaylists.push(pl);
       }
 
-      // 2. Merge server playlists into local
-      const merged: Playlist[] = [...localPlaylists];
-      for (const pl of serverPlaylists) {
-        if (!localMap.has(pl.name)) {
-          merged.push(pl);
-        }
-      }
-
-      if (merged.length !== localPlaylists.length) {
-        useCollectionStore.setState({ playlists: merged });
-        localStorage.setItem('playlists', JSON.stringify(merged));
-      }
+      this.isInternalSync = true;
+      collectionStore.setPlaylists(finalPlaylists);
+      this.isInternalSync = false;
     } catch (err) {
       console.error('syncPlaylists error:', err);
     } finally {
@@ -310,22 +395,34 @@ class PocketBaseService {
 
   public async onPlaylistModified(playlist: Playlist) {
     const userId = this.getUserId();
-    if (!userId) return;
+    if (!userId || this.isInternalSync || this.isSyncingPlaylists) return;
 
     try {
-      const existing = await this.pb.collection('playlists').getList(1, 1, {
-        filter: `user = "${userId}" && name = "${playlist.name}"`
-      });
-      if (existing.items.length > 0) {
-        await this.pb.collection('playlists').update(existing.items[0].id, {
-          tracks_json: playlist.tracks
+      let recordId = playlist.cloudId;
+      if (!recordId) {
+        const existing = await this.pb.collection('playlists').getList(1, 1, {
+          filter: `user = "${userId}" && name = "${playlist.name.replace(/"/g, '\\"')}"`
         });
+        if (existing.items.length > 0) {
+          recordId = existing.items[0].id;
+          playlist.cloudId = recordId;
+        }
+      }
+
+      const payload = {
+        name: playlist.name,
+        tracks_json: playlist.tracks,
+        cover_url: playlist.coverUrl || ''
+      };
+
+      if (recordId) {
+        await this.pb.collection('playlists').update(recordId, payload);
       } else {
-        await this.pb.collection('playlists').create({
+        const created = await this.pb.collection('playlists').create({
           user: userId,
-          name: playlist.name,
-          tracks_json: playlist.tracks
+          ...payload
         });
+        playlist.cloudId = created.id;
       }
     } catch (err) {
       console.warn('onPlaylistModified error:', err);
@@ -334,11 +431,11 @@ class PocketBaseService {
 
   public async onPlaylistDeleted(name: string) {
     const userId = this.getUserId();
-    if (!userId) return;
+    if (!userId || this.isInternalSync) return;
 
     try {
       const existing = await this.pb.collection('playlists').getList(1, 1, {
-        filter: `user = "${userId}" && name = "${name}"`
+        filter: `user = "${userId}" && name = "${name.replace(/"/g, '\\"')}"`
       });
       if (existing.items.length > 0) {
         await this.pb.collection('playlists').delete(existing.items[0].id);
@@ -355,7 +452,7 @@ class PocketBaseService {
     try {
       // Subscribe to favorites
       this.pb.collection('favorites').subscribe('*', (e) => {
-        if (this.isSyncingFavorites) return;
+        if (this.isSyncingFavorites || this.isInternalSync) return;
         const collectionStore = useCollectionStore.getState();
         if (e.action === 'create' && e.record.user === userId) {
           const newTrack: Track = {
@@ -386,17 +483,45 @@ class PocketBaseService {
 
       // Subscribe to playlists
       this.pb.collection('playlists').subscribe('*', (e) => {
-        if (this.isSyncingPlaylists) return;
+        if (this.isSyncingPlaylists || this.isInternalSync) return;
+        if (e.record.user !== userId) return;
+
         const collectionStore = useCollectionStore.getState();
-        if (e.action === 'create' && e.record.user === userId) {
-          const exists = collectionStore.playlists.some(p => p.name === e.record.name);
-          if (!exists) {
-            collectionStore.createPlaylist(e.record.name, e.record.tracks_json || []);
+        const currentPlaylists = [...collectionStore.playlists];
+        const record = e.record;
+
+        if (e.action === 'create' || e.action === 'update') {
+          const idx = currentPlaylists.findIndex(p => 
+            (p.cloudId && p.cloudId === record.id) || 
+            p.name.trim().toLowerCase() === record.name.trim().toLowerCase()
+          );
+
+          const updatedPlaylist: Playlist = {
+            id: idx >= 0 ? currentPlaylists[idx].id : ('pl_' + record.id),
+            name: record.name,
+            coverUrl: record.cover_url || undefined,
+            tracks: Array.isArray(record.tracks_json) ? record.tracks_json : [],
+            cloudId: record.id,
+            updatedAt: new Date(record.updated).getTime()
+          };
+
+          if (idx >= 0) {
+            currentPlaylists[idx] = updatedPlaylist;
+          } else {
+            currentPlaylists.push(updatedPlaylist);
           }
-        } else if (e.action === 'delete' && e.record.user === userId) {
-          const target = collectionStore.playlists.find(p => p.name === e.record.name);
-          if (target) {
-            collectionStore.deletePlaylist(target.id);
+
+          this.isInternalSync = true;
+          collectionStore.setPlaylists(currentPlaylists);
+          this.isInternalSync = false;
+        } else if (e.action === 'delete') {
+          const filtered = currentPlaylists.filter(p => 
+            p.cloudId !== record.id && p.name !== record.name
+          );
+          if (filtered.length !== currentPlaylists.length) {
+            this.isInternalSync = true;
+            collectionStore.setPlaylists(filtered);
+            this.isInternalSync = false;
           }
         }
       }).then(unsub => {

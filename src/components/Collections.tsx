@@ -17,6 +17,7 @@ import { audioService } from '../services/AudioService';
 import { PlayingIndicator } from './PlayingIndicator';
 import { Track } from '../types';
 import { pickImage } from '../utils/mediaPicker';
+import { MediaCover } from './MediaCover';
 
 const ActionPills = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center gap-2">
@@ -88,7 +89,7 @@ const CollectionTrackRow: React.FC<CollectionTrackRowProps> = ({
           className="relative w-10 h-10 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] rounded-lg group/cover"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <img src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
+          <MediaCover src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
           <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${isActive ? 'opacity-100 bg-black/40' : 'opacity-0 group-hover/cover:opacity-100 bg-black/40'}`}>
             {isActive ? <PlayingIndicator isPaused={!isPlaying} /> : <div className="w-6 h-6 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md"><Play size={10} fill="currentColor" className="text-[var(--text-main)] ml-0.5" /></div>}
           </div>
@@ -339,7 +340,7 @@ export const Collections: React.FC = () => {
               >
                 <div className="w-full h-full rounded-full overflow-hidden bg-[var(--bg-surface)]">
                   {pl.coverUrl ? (
-                    <img src={pl.coverUrl} className="w-full h-full object-cover" />
+                    <MediaCover src={pl.coverUrl} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-[#555]">
                       <Play size={18} fill="currentColor" />
@@ -547,7 +548,7 @@ export const Collections: React.FC = () => {
                 className="w-20 h-20 md:w-40 md:h-40 shrink-0 rounded-2xl md:rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-lg relative group cursor-pointer"
                 title="Нажмите, чтобы изменить обложку"
               >
-                <img src={playlist.coverUrl || defaultCoverUrl} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <MediaCover src={playlist.coverUrl || defaultCoverUrl} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
               </div>
               <div className="flex flex-col pb-1 md:pb-2">
                 <div className="flex items-center gap-2 md:gap-3">

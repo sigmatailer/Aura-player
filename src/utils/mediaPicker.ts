@@ -1,10 +1,10 @@
 // Universal media picker and compressor for Web, Android, iOS, and Desktop
 
-export async function pickImage(maxDim = 800, quality = 0.85): Promise<string | null> {
+export async function pickMedia(maxDim = 800, quality = 0.85): Promise<string | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/webp,image/gif,image/*';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,image/*,video/*';
     input.style.display = 'none';
 
     input.onchange = async () => {
@@ -14,8 +14,18 @@ export async function pickImage(maxDim = 800, quality = 0.85): Promise<string | 
         return;
       }
 
-      // If it's a GIF, keep the animation intact as Data URL without canvas rasterization
-      if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
+      const isVideo = file.type.startsWith('video/') || 
+                      file.name.toLowerCase().endsWith('.mp4') || 
+                      file.name.toLowerCase().endsWith('.webm');
+      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+
+      // 1. Video files: limit size to 5MB to prevent storage quota issues
+      if (isVideo) {
+        if (file.size > 5 * 1024 * 1024) {
+          alert('Размер видеофайла слишком большой (максимум 5 МБ для обложки)');
+          resolve(null);
+          return;
+        }
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = () => resolve(null);
@@ -23,7 +33,21 @@ export async function pickImage(maxDim = 800, quality = 0.85): Promise<string | 
         return;
       }
 
-      // Otherwise, compress and resize to maxDim to prevent localStorage quota overflow
+      // 2. GIF files: limit size to 4MB, keep animation intact
+      if (isGif) {
+        if (file.size > 4 * 1024 * 1024) {
+          alert('Размер GIF-анимации слишком большой (максимум 4 МБ для обложки)');
+          resolve(null);
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // 3. Regular image files: resize and compress with canvas
       try {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -74,38 +98,12 @@ export async function pickImage(maxDim = 800, quality = 0.85): Promise<string | 
     document.body.appendChild(input);
     input.click();
     setTimeout(() => {
-      document.body.removeChild(input);
-    }, 60000);
-  });
-}
-
-export async function pickMediaFile(): Promise<string | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'video/mp4,video/webm,video/ogg,image/gif,image/png,image/jpeg,image/webp,video/*,image/*';
-    input.style.display = 'none';
-
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) {
-        resolve(null);
-        return;
+      if (document.body.contains(input)) {
+        document.body.removeChild(input);
       }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve(reader.result as string);
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    };
-
-    input.oncancel = () => resolve(null);
-    document.body.appendChild(input);
-    input.click();
-    setTimeout(() => {
-      document.body.removeChild(input);
     }, 60000);
   });
 }
+
+export const pickImage = pickMedia;
+export const pickMediaFile = pickMedia;
