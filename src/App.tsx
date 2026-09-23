@@ -15,6 +15,7 @@ import { useAuthStore } from './store/useAuthStore';
 import { Collections } from './components/Collections';
 import { GlobalModal } from './components/GlobalModal';
 import { GlobalTooltip } from './components/GlobalTooltip';
+import { AuthModal } from './components/AuthModal';
 import FullscreenPlayer from './components/FullscreenPlayer';
 import { MiniPlayer } from './components/MiniPlayer';
 import { MiniPlayerRectangle } from './components/MiniPlayerRectangle';
@@ -348,6 +349,7 @@ function App() {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
       />
+      <AuthModal />
       
       <EqualizerModal />
       <FullscreenPlayer />

@@ -14,6 +14,11 @@ interface AuthState {
   isSyncing: boolean;
   lastSyncTime: number | null;
   syncStatus: string;
+  isAuthModalOpen: boolean;
+  hasSkippedAuthModal: boolean;
+  openAuthModal: () => void;
+  closeAuthModal: () => void;
+  skipAuthModal: () => void;
   setUser: (user: CloudUser | null) => void;
   setToken: (token: string | null) => void;
   setServerUrl: (url: string) => void;
@@ -29,22 +34,35 @@ export const useAuthStore = create<AuthState>((set) => {
   const savedServer = localStorage.getItem('aura_pb_server') || DEFAULT_SERVER_URL;
   const savedUser = localStorage.getItem('aura_pb_user');
   const savedToken = localStorage.getItem('aura_pb_token');
+  const initialUser = savedUser ? JSON.parse(savedUser) : null;
+  const skippedInSession = sessionStorage.getItem('aura_auth_skipped') === 'true';
 
   return {
-    user: savedUser ? JSON.parse(savedUser) : null,
+    user: initialUser,
     token: savedToken || null,
     serverUrl: savedServer,
     isSyncing: false,
     lastSyncTime: null,
     syncStatus: 'Готов',
+    // Если пользователь не залогинен и не нажал "Пропустить", открываем окно сразу при входе
+    isAuthModalOpen: !initialUser && !skippedInSession,
+    hasSkippedAuthModal: skippedInSession,
+
+    openAuthModal: () => set({ isAuthModalOpen: true }),
+    closeAuthModal: () => set({ isAuthModalOpen: false }),
+    skipAuthModal: () => {
+      sessionStorage.setItem('aura_auth_skipped', 'true');
+      set({ isAuthModalOpen: false, hasSkippedAuthModal: true });
+    },
 
     setUser: (user) => {
       if (user) {
         localStorage.setItem('aura_pb_user', JSON.stringify(user));
+        sessionStorage.removeItem('aura_auth_skipped');
       } else {
         localStorage.removeItem('aura_pb_user');
       }
-      set({ user });
+      set({ user, isAuthModalOpen: false });
     },
 
     setToken: (token) => {
@@ -69,7 +87,8 @@ export const useAuthStore = create<AuthState>((set) => {
       localStorage.removeItem('aura_pb_user');
       localStorage.removeItem('aura_pb_token');
       localStorage.removeItem('pocketbase_auth');
-      set({ user: null, token: null, lastSyncTime: null, syncStatus: 'Не авторизован' });
+      sessionStorage.removeItem('aura_auth_skipped');
+      set({ user: null, token: null, lastSyncTime: null, syncStatus: 'Не авторизован', isAuthModalOpen: true });
     }
   };
 });
