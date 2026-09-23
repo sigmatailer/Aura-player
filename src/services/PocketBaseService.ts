@@ -109,7 +109,7 @@ class PocketBaseService {
   public getDeviceName(): string {
     if (isAndroid) return 'Android Устройство';
     if (isIOS) return 'iPhone / iPad';
-    return 'Компьютер (Desktop)';
+    return 'Компьютер (ПК)';
   }
 
   public isLoggedIn(): boolean {

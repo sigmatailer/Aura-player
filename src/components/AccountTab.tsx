@@ -291,11 +291,11 @@ export const AccountTab: React.FC = () => {
       {/* Card: Active Devices Sync */}
       <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-sm space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm">
-            <Smartphone size={18} className="text-[var(--accent)]" />
+          <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm whitespace-nowrap">
+            <Smartphone size={18} className="text-[var(--accent)] shrink-0" />
             <span>Синхронизированные устройства</span>
           </div>
-          <span className="text-xs text-[var(--text-secondary)] font-medium">
+          <span className="text-xs text-[var(--text-secondary)] font-medium whitespace-nowrap">
             {activeDevices.length > 0 ? `${activeDevices.length} онлайн` : '1 онлайн'}
           </span>
         </div>
@@ -315,19 +315,19 @@ export const AccountTab: React.FC = () => {
                       <Monitor size={18} />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <div className="text-xs font-bold text-[var(--text-main)] flex items-center gap-2">
-                      <span className="truncate">{dev.device_name || 'Устройство Aura'}</span>
+                      <span className="truncate whitespace-nowrap">{dev.device_name || 'Устройство Aura'}</span>
                       {dev.is_playing && (
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Воспроизводится" />
                       )}
                     </div>
-                    <div className="text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
+                    <div className="text-[11px] text-[var(--text-secondary)] truncate whitespace-nowrap mt-0.5">
                       {dev.title ? `${dev.title} — ${dev.artist}` : 'Ожидание воспроизведения'}
                     </div>
                   </div>
                 </div>
-                <span className="text-[10px] text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0 whitespace-nowrap">
+                <span className="text-[10px] text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0 whitespace-nowrap ml-2">
                   Синхронизировано
                 </span>
               </div>
