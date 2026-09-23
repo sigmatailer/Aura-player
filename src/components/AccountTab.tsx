@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Lock, Mail, RefreshCw, Smartphone, Monitor, 
-  LogOut, Radio, BarChart3, TrendingUp, 
+  LogOut, Radio, 
   AlertCircle, ShieldCheck, Sparkles 
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { pocketBaseService } from '../services/PocketBaseService';
-import { waveAnalyticsService } from '../services/WaveAnalyticsService';
 
 export const AccountTab: React.FC = () => {
   const { user, isSyncing, syncStatus, lastSyncTime } = useAuthStore();
@@ -20,24 +19,13 @@ export const AccountTab: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Devices & Analytics State
+  // Devices State
   const [activeDevices, setActiveDevices] = useState<any[]>([]);
-  const [analyticsStats, setAnalyticsStats] = useState<{
-    totalListens: number;
-    completedCount: number;
-    skippedCount: number;
-    completionRate: number;
-    topArtists: { artist: string; count: number }[];
-  } | null>(null);
 
   const loadData = async () => {
     if (pocketBaseService.isLoggedIn()) {
-      const [devices, stats] = await Promise.all([
-        pocketBaseService.getActiveDevices(),
-        waveAnalyticsService.fetchServerStats()
-      ]);
+      const devices = await pocketBaseService.getActiveDevices();
       setActiveDevices(devices);
-      setAnalyticsStats(stats);
     }
   };
 
@@ -239,8 +227,8 @@ export const AccountTab: React.FC = () => {
           </div>
           <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-main)] flex flex-col items-center text-center gap-1.5">
             <Radio size={18} className="text-[var(--accent)]" />
-            <span className="text-[11px] font-semibold text-[var(--text-main)]">Умная Волна</span>
-            <span className="text-[10px] text-[var(--text-secondary)]">Аналитика дослушиваний и скипов для идеального вкуса</span>
+            <span className="text-[11px] font-semibold text-[var(--text-main)]">Моя Волна</span>
+            <span className="text-[10px] text-[var(--text-secondary)]">Умный подбор любимых треков и жанров</span>
           </div>
           <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-main)] flex flex-col items-center text-center gap-1.5">
             <Smartphone size={18} className="text-[var(--accent)]" />
@@ -300,135 +288,68 @@ export const AccountTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid: Wave Analytics + Active Devices */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Card: Wave Analytics */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm">
-              <BarChart3 size={18} className="text-[var(--accent)]" />
-              <span>Аналитика «Моей волны»</span>
-            </div>
-            <span className="px-2 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)] text-[10px] font-bold">
-              В реальном времени
-            </span>
+      {/* Card: Active Devices Sync */}
+      <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm">
+            <Smartphone size={18} className="text-[var(--accent)]" />
+            <span>Синхронизированные устройства</span>
           </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <div className="p-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] text-center">
-              <div className="text-lg font-black text-[var(--text-main)]">
-                {analyticsStats?.totalListens ?? 0}
-              </div>
-              <div className="text-[10px] text-[var(--text-secondary)] mt-0.5">
-                Прослушано
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] text-center">
-              <div className="text-lg font-black text-emerald-400">
-                {analyticsStats?.completionRate ?? 0}%
-              </div>
-              <div className="text-[10px] text-[var(--text-secondary)] mt-0.5">
-                Дослушиваний
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] text-center">
-              <div className="text-lg font-black text-amber-400">
-                {analyticsStats?.skippedCount ?? 0}
-              </div>
-              <div className="text-[10px] text-[var(--text-secondary)] mt-0.5">
-                Пропущено
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2 pt-1">
-            <div className="text-xs font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
-              <TrendingUp size={14} className="text-emerald-400" />
-              <span>Любимые исполнители по данным сервера:</span>
-            </div>
-            {analyticsStats?.topArtists && analyticsStats.topArtists.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {analyticsStats.topArtists.map((a, i) => (
-                  <span
-                    key={i}
-                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-main)] border border-[var(--border-main)] text-[11px] font-medium text-[var(--text-main)] flex items-center gap-1.5"
-                  >
-                    <span className="text-[var(--accent)] font-bold">{i + 1}.</span>
-                    <span>{a.artist}</span>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-[var(--text-secondary)] italic">
-                Слушайте треки в «Моей волне», и здесь появятся ваши любимые авторы!
-              </p>
-            )}
-          </div>
+          <span className="text-xs text-[var(--text-secondary)] font-medium">
+            {activeDevices.length > 0 ? `${activeDevices.length} онлайн` : '1 онлайн'}
+          </span>
         </div>
 
-        {/* Card: Active Devices Sync */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm">
-              <Smartphone size={18} className="text-[var(--accent)]" />
-              <span>Синхронизированные устройства</span>
-            </div>
-            <span className="text-xs text-[var(--text-secondary)]">
-              {activeDevices.length > 0 ? `${activeDevices.length} онлайн` : '1 онлайн'}
-            </span>
-          </div>
-
-          <div className="space-y-2.5">
-            {activeDevices.length > 0 ? (
-              activeDevices.map((dev, idx) => (
-                <div
-                  key={idx}
-                  className="p-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-surface)] flex items-center justify-center text-[var(--accent)] shrink-0">
-                      {dev.device_name?.includes('Android') || dev.device_name?.includes('iPhone') ? (
-                        <Smartphone size={16} />
-                      ) : (
-                        <Monitor size={16} />
+        <div className="space-y-2.5">
+          {activeDevices.length > 0 ? (
+            activeDevices.map((dev, idx) => (
+              <div
+                key={idx}
+                className="p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center text-[var(--accent)] shrink-0 border border-[var(--border-main)]">
+                    {dev.device_name?.includes('Android') || dev.device_name?.includes('iPhone') ? (
+                      <Smartphone size={18} />
+                    ) : (
+                      <Monitor size={18} />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-[var(--text-main)] flex items-center gap-2">
+                      <span className="truncate">{dev.device_name || 'Устройство Aura'}</span>
+                      {dev.is_playing && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Воспроизводится" />
                       )}
                     </div>
-                    <div>
-                      <div className="text-xs font-bold text-[var(--text-main)] flex items-center gap-2">
-                        <span>{dev.device_name || 'Устройство Aura'}</span>
-                        {dev.is_playing && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        )}
-                      </div>
-                      <div className="text-[10px] text-[var(--text-secondary)] truncate max-w-[180px]">
-                        {dev.title ? `${dev.title} — ${dev.artist}` : 'Ожидание воспроизведения'}
-                      </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
+                      {dev.title ? `${dev.title} — ${dev.artist}` : 'Ожидание воспроизведения'}
                     </div>
                   </div>
-                  <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0">
-                    Синхронизировано
-                  </span>
                 </div>
-              ))
-            ) : (
-              <div className="p-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <Monitor size={16} className="text-[var(--accent)]" />
-                  <span className="text-xs text-[var(--text-main)] font-semibold">Текущее устройство</span>
-                </div>
-                <span className="text-[10px] text-emerald-400 font-medium">Активно</span>
+                <span className="text-[10px] text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0 whitespace-nowrap">
+                  Синхронизировано
+                </span>
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Monitor size={18} className="text-[var(--accent)]" />
+                <span className="text-xs text-[var(--text-main)] font-semibold">Текущее устройство</span>
+              </div>
+              <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                Активно
+              </span>
+            </div>
+          )}
+        </div>
 
-          <div className="p-3 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/20 flex items-start gap-2.5">
-            <Sparkles size={16} className="text-[var(--accent)] shrink-0 mt-0.5" />
-            <p className="text-[11px] text-[var(--text-main)]/90 leading-relaxed">
-              Лайк или добавление плейлиста на одном устройстве мгновенно отображается на всех остальных благодаря базе данных PocketBase.
-            </p>
-          </div>
+        <div className="p-3.5 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/20 flex items-start gap-2.5">
+          <Sparkles size={16} className="text-[var(--accent)] shrink-0 mt-0.5" />
+          <p className="text-[11px] text-[var(--text-main)]/90 leading-relaxed">
+            Лайк или добавление плейлиста на одном устройстве мгновенно отображается на всех остальных благодаря базе данных PocketBase.
+          </p>
         </div>
       </div>
     </div>

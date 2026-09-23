@@ -2,7 +2,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { Track } from '../types';
 import { usePlayerStore, useSettingsStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
-import { waveAnalyticsService } from './WaveAnalyticsService';
 
 export interface WaveTuningOptions {
   mood?: 'all' | 'energetic' | 'calm' | 'happy' | 'sad';
@@ -29,6 +28,41 @@ export interface PlaybackProfile {
   seedGenres: string[];
 }
 
+// Genre dictionaries for precise mood-based matching
+const CALM_GENRES = [
+  'ambient', 'chill', 'lofi', 'lo-fi', 'acoustic', 'lounge', 'indie', 'folk',
+  'classical', 'chillout', 'rnb', 'soul', 'dream-pop', 'dream pop', 'slow',
+  'meditation', 'cinematic', 'instrumental', 'downtempo', 'neoclassical',
+  'soft-rock', 'soft rock', 'jazz', 'blues', 'relaxation', 'sleep',
+  'easy listening', 'singer-songwriter', 'bossa nova', 'indie-folk', 'ambient pop'
+];
+
+const CALM_DISALLOWED = [
+  'metal', 'hardcore', 'punk', 'hard-rock', 'hard rock', 'phonk', 'hardstyle',
+  'drum and bass', 'dnb', 'drumandbass', 'dubstep', 'hyperpop', 'techno',
+  'edm', 'heavy', 'thrash', 'deathcore', 'drill', 'trap', 'club', 'party',
+  'hard dance', 'aggressive', 'rage', 'screamo', 'grime'
+];
+
+const ENERGETIC_GENRES = [
+  'dance', 'edm', 'electronic', 'house', 'phonk', 'rock', 'pop-rock',
+  'hip-hop', 'rap', 'dnb', 'drum and bass', 'synthwave', 'workout', 'upbeat',
+  'techno', 'eurodance', 'hardstyle', 'dubstep', 'party', 'metal', 'punk', 'pop-punk'
+];
+
+const ENERGETIC_DISALLOWED = [
+  'ambient', 'classical', 'lullaby', 'meditation', 'slow', 'sleep',
+  'downtempo', 'relaxation', 'lounge', 'acoustic ballad'
+];
+
+const HAPPY_GENRES = [
+  'pop', 'dance', 'funk', 'disco', 'indie-pop', 'reggae', 'latin', 'happy', 'ska', 'party'
+];
+
+const SAD_GENRES = [
+  'sad rap', 'melancholy', 'acoustic', 'slow indie', 'post-punk', 'blues', 'sad', 'emo', 'ballad'
+];
+
 export function analyzeTrack(track: Track): TrackAnalysis {
   const text = `${track.title || ''} ${track.artist || ''}`.toLowerCase();
   
@@ -48,6 +82,8 @@ export function analyzeTrack(track: Track): TrackAnalysis {
   let yandexTrackId: string | undefined;
   if (track.filePath && track.filePath.startsWith('yandex:')) {
     yandexTrackId = track.filePath.replace('yandex:', '');
+  } else if (/^\d+$/.test(track.id)) {
+    yandexTrackId = track.id;
   }
   
   return {
@@ -60,8 +96,47 @@ export function analyzeTrack(track: Track): TrackAnalysis {
   };
 }
 
+/**
+ * Gathers 15-20 seed tracks directly from the user's account database
+ * (favorites, playlists, and recent playback history).
+ */
+export function getAccountSeedTracks(): Track[] {
+  const collectionState = useCollectionStore.getState();
+  const playerState = usePlayerStore.getState();
+
+  const seeds: Track[] = [];
+  const seenIds = new Set<string>();
+
+  const add = (t?: Track) => {
+    if (!t || !t.id) return;
+    const key = (t.filePath || t.id).toLowerCase();
+    if (!seenIds.has(key)) {
+      seenIds.add(key);
+      seeds.push(t);
+    }
+  };
+
+  // 1. User's liked tracks from account
+  (collectionState.likedTracks || []).forEach(add);
+
+  // 2. Tracks from user's playlists
+  (collectionState.playlists || []).forEach(p => {
+    (p.tracks || []).forEach(add);
+  });
+
+  // 3. User's recent player history
+  (playerState.history || []).forEach(add);
+
+  // Take up to 20 representative tracks from account
+  return seeds.slice(0, 20);
+}
+
+/**
+ * Deeply analyzes the 15-20 account seed tracks to discover favorite genres,
+ * artists, language balance, and track seeds for the recommendation engine.
+ */
 export function analyzePlaybackHistory(tracks: Track[]): PlaybackProfile {
-  const seeds = tracks.slice(0, 15);
+  const seeds = tracks.length > 0 ? tracks.slice(0, 20) : getAccountSeedTracks();
   if (seeds.length === 0) {
     return {
       totalAnalyzed: 0,
@@ -93,7 +168,7 @@ export function analyzePlaybackHistory(tracks: Track[]): PlaybackProfile {
       artistCounts[lower] = (artistCounts[lower] || 0) + 1;
     }
     
-    if (analysis.yandexTrackId) {
+    if (analysis.yandexTrackId && !seedYandexTrackIds.includes(analysis.yandexTrackId)) {
       seedYandexTrackIds.push(analysis.yandexTrackId);
     }
     
@@ -104,8 +179,8 @@ export function analyzePlaybackHistory(tracks: Track[]): PlaybackProfile {
   }
   
   const total = seeds.length;
-  const russianRatio = russianCount / total;
-  const foreignRatio = foreignCount / total;
+  const russianRatio = total > 0 ? russianCount / total : 0.5;
+  const foreignRatio = total > 0 ? foreignCount / total : 0.5;
   
   let dominantLanguage: 'russian' | 'foreign' | 'mixed' = 'mixed';
   if (russianRatio >= 0.55) {
@@ -133,6 +208,77 @@ export function analyzePlaybackHistory(tracks: Track[]): PlaybackProfile {
   };
 }
 
+/**
+ * Checks whether a candidate track matches the requested mood strictly.
+ */
+function matchesMood(rawTrack: any, mood?: string): boolean {
+  if (!mood || mood === 'all') return true;
+
+  const rawGenre = (rawTrack.albums?.[0]?.genre || rawTrack.genre || '').toLowerCase();
+  const titleAndArtist = `${rawTrack.title || ''} ${rawTrack.artists?.map((a: any) => a.name).join(' ') || rawTrack.artist || ''}`.toLowerCase();
+
+  if (mood === 'calm') {
+    // 1. Strictly exclude aggressive / high-energy genres
+    for (const bad of CALM_DISALLOWED) {
+      if (rawGenre.includes(bad) || titleAndArtist.includes(bad)) {
+        return false;
+      }
+    }
+    if (rawGenre && CALM_GENRES.some(g => rawGenre.includes(g))) {
+      return true;
+    }
+    return true;
+  }
+
+  if (mood === 'energetic') {
+    // Strictly exclude slow / ambient / lullaby
+    for (const bad of ENERGETIC_DISALLOWED) {
+      if (rawGenre.includes(bad)) {
+        return false;
+      }
+    }
+    if (rawGenre && ENERGETIC_GENRES.some(g => rawGenre.includes(g))) {
+      return true;
+    }
+    return true;
+  }
+
+  if (mood === 'happy') {
+    for (const sad of SAD_GENRES) {
+      if (rawGenre.includes(sad)) return false;
+    }
+    if (rawGenre && HAPPY_GENRES.some(g => rawGenre.includes(g))) {
+      return true;
+    }
+    return true;
+  }
+
+  if (mood === 'sad') {
+    return true;
+  }
+
+  return true;
+}
+
+/**
+ * Checks language match for candidate track.
+ */
+function matchesLanguage(rawTrack: any, language?: string): boolean {
+  if (!language || language === 'auto') return true;
+
+  const text = `${rawTrack.title || ''} ${rawTrack.artists?.map((a: any) => a.name).join(' ') || rawTrack.artist || ''}`.toLowerCase();
+  const cyrillic = (text.match(/[а-яё]/g) || []).length;
+  const latin = (text.match(/[a-z]/g) || []).length;
+
+  if (language === 'russian') {
+    return cyrillic >= 2 || cyrillic >= latin;
+  }
+  if (language === 'foreign') {
+    return latin >= 2 && cyrillic < 2;
+  }
+  return true;
+}
+
 // Map tuner options to official Yandex Rotor settings2 parameters
 function mapTuningToYandexSettings2(tuning: WaveTuningOptions) {
   const settings2: Record<string, string> = {
@@ -141,20 +287,17 @@ function mapTuningToYandexSettings2(tuning: WaveTuningOptions) {
     language: 'any'
   };
 
-  // 1. Mood / Energy
   if (tuning.mood === 'energetic') settings2.moodEnergy = 'active';
   else if (tuning.mood === 'calm') settings2.moodEnergy = 'calm';
   else if (tuning.mood === 'happy') settings2.moodEnergy = 'fun';
   else if (tuning.mood === 'sad') settings2.moodEnergy = 'sad';
   else settings2.moodEnergy = 'all';
 
-  // 2. Character / Diversity
   if (tuning.character === 'favorite') settings2.diversity = 'favorite';
   else if (tuning.character === 'discovery') settings2.diversity = 'discover';
   else if (tuning.character === 'popular') settings2.diversity = 'popular';
   else settings2.diversity = 'default';
 
-  // 3. Language
   if (tuning.language === 'russian') settings2.language = 'russian';
   else if (tuning.language === 'foreign') settings2.language = 'not-russian';
   else if (tuning.language === 'instrumental') settings2.language = 'without-words';
@@ -175,21 +318,10 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
   artists: Array<{ id?: string; name: string; coverUrl?: string }>;
 }> {
   currentTuning = tuning;
-  const playerState = usePlayerStore.getState();
-  const collectionState = useCollectionStore.getState();
 
-  // Profile history analysis
-  let seedPool = [...(playerState.history || [])];
-  if (seedPool.length < 15) {
-    const liked = collectionState.likedTracks || [];
-    for (const t of liked) {
-      if (!seedPool.some(s => s.id === t.id)) {
-        seedPool.push(t);
-        if (seedPool.length >= 15) break;
-      }
-    }
-  }
-  const profile = analyzePlaybackHistory(seedPool);
+  // 1. Extract 15-20 seed tracks from the user's account database & analyze deeply
+  const accountSeeds = getAccountSeedTracks();
+  const profile = analyzePlaybackHistory(accountSeeds);
 
   const yaToken = useSettingsStore.getState().yandexToken || localStorage.getItem('yandex_access_token') || '';
   const yandexSettings = mapTuningToYandexSettings2(tuning);
@@ -199,7 +331,7 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
   let lastTrackId: string | null = null;
   let batchId: string | null = null;
 
-  // 1. Fetch batches directly from Yandex Rotor "Моя волна" (user:onyourwave)
+  // 2. Fetch tracks directly from Yandex Rotor "Моя волна" (user:onyourwave) with tuning
   if (yaToken) {
     for (let b = 0; b < 5; b++) {
       try {
@@ -232,52 +364,57 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
         break;
       }
     }
+
+    // 3. Deeper account alignment: If user has account seed tracks with Yandex IDs,
+    // enrich the candidate pool with similar tracks matching their account taste
+    if (profile.seedYandexTrackIds.length > 0 && collectedRawTracks.length < 25) {
+      const topSeedIds = profile.seedYandexTrackIds.slice(0, 3);
+      for (const seedId of topSeedIds) {
+        try {
+          const simRes: string = await invoke('yandex_api_request', {
+            url: `https://api.music.yandex.net/tracks/${seedId}/similar`,
+            token: yaToken
+          });
+          const simData = JSON.parse(simRes);
+          const simTracks = simData.result?.similarTracks || [];
+          for (const st of simTracks) {
+            if (st && st.id && !seenIds.has(String(st.id))) {
+              seenIds.add(String(st.id));
+              collectedRawTracks.push(st);
+            }
+          }
+        } catch (simErr) {
+          console.warn('Track similarity fetch skipped:', simErr);
+        }
+      }
+    }
   }
 
   currentBatchId = batchId;
   currentLastTrackId = lastTrackId;
 
-  // 2. Fallback: If Rotor is unavailable or returns 0 tracks, try personal playlists
-  if (collectedRawTracks.length === 0 && yaToken) {
-    try {
-      const landingRes: string = await invoke('yandex_api_request', {
-        url: 'https://api.music.yandex.net/landing3?blocks=personalplaylists,chart',
-        token: yaToken
-      });
-      const landingData = JSON.parse(landingRes);
-      const blocks = landingData.result?.blocks || [];
-      for (const block of blocks) {
-        if (block.entities) {
-          for (const entity of block.entities) {
-            const plData = entity.data?.data || entity.data;
-            if (plData?.tracks) {
-              for (const t of plData.tracks) {
-                const tr = t.track || t;
-                if (tr && tr.id && !seenIds.has(String(tr.id))) {
-                  seenIds.add(String(tr.id));
-                  collectedRawTracks.push(tr);
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (fbErr) {
-      console.warn('Personal playlist fallback failed:', fbErr);
-    }
-  }
+  // 4. Strict Mood & Language Genre Filtering
+  const filteredCandidates = collectedRawTracks.filter(t => {
+    return matchesMood(t, tuning.mood) && matchesLanguage(t, tuning.language);
+  });
 
-  // 3. Fallback: Liked tracks
-  if (collectedRawTracks.length === 0 && collectionState.likedTracks && collectionState.likedTracks.length > 0) {
-    const shuffled = [...collectionState.likedTracks].sort(() => 0.5 - Math.random());
-    const tracks: Track[] = shuffled.slice(0, 25).map(t => ({
+  // Use filtered candidates if sufficient, otherwise fallback gracefully
+  const candidatePool = filteredCandidates.length >= 8 ? filteredCandidates : collectedRawTracks;
+
+  // 5. Fallback: If network/token returned 0 tracks, use account seed tracks filtered by mood
+  if (candidatePool.length === 0 && accountSeeds.length > 0) {
+    const filteredSeeds = accountSeeds.filter(t => matchesMood(t, tuning.mood) && matchesLanguage(t, tuning.language));
+    const seedsToUse = filteredSeeds.length >= 5 ? filteredSeeds : accountSeeds;
+    const shuffled = [...seedsToUse].sort(() => 0.5 - Math.random());
+
+    const fallbackTracks: Track[] = shuffled.slice(0, 25).map(t => ({
       ...t,
       id: 'vibe_' + t.id + '_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
     }));
 
     const artists: Array<{ id?: string; name: string; coverUrl?: string }> = [];
     const seenNames = new Set<string>();
-    for (const t of tracks) {
+    for (const t of fallbackTracks) {
       const lower = (t.artist || '').toLowerCase().trim();
       if (lower && !seenNames.has(lower)) {
         seenNames.add(lower);
@@ -288,26 +425,11 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
       }
     }
 
-    return { tracks, profile, artists };
+    return { tracks: fallbackTracks, profile, artists };
   }
 
-  // Filter disliked tracks and prioritize preferred artists using Wave Analytics
-  const filteredRawTracks = collectedRawTracks.filter((t: any) => {
-    const rawId = String(t.id);
-    const artist = t.artists?.map((a: any) => a.name).join(', ') || '';
-    if (waveAnalyticsService.isTrackDisliked(rawId) || waveAnalyticsService.isTrackDisliked(`yandex:${rawId}`)) {
-      return false;
-    }
-    if (artist && waveAnalyticsService.isArtistDisliked(artist)) {
-      return false;
-    }
-    return true;
-  });
-
-  const rawTracksToUse = filteredRawTracks.length >= 8 ? filteredRawTracks : collectedRawTracks;
-
-  // Convert directly into Track models PRESERVING Yandex's official sequence order!
-  const tracks: Track[] = rawTracksToUse.map((t: any) => ({
+  // 6. Map to Track models
+  const tracks: Track[] = candidatePool.map((t: any) => ({
     id: 'vibe_' + t.id + '_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
     title: t.title,
     artist: t.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist',
@@ -319,16 +441,16 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
     genre: t.albums?.[0]?.genre || undefined,
   }));
 
-  // Extract unique artist cards for the vibe circular carousel
+  // 7. Extract unique artist cards for the vibe circular carousel
   const artists: Array<{ id?: string; name: string; coverUrl?: string }> = [];
-  const seenNames = new Set<string>();
+  const seenArtistNames = new Set<string>();
 
-  for (const t of collectedRawTracks) {
+  for (const t of candidatePool) {
     if (t.artists) {
       for (const a of t.artists) {
         const lower = (a.name || '').toLowerCase().trim();
-        if (lower && !seenNames.has(lower)) {
-          seenNames.add(lower);
+        if (lower && !seenArtistNames.has(lower)) {
+          seenArtistNames.add(lower);
           artists.push({
             id: a.id ? String(a.id) : undefined,
             name: a.name,
@@ -344,7 +466,7 @@ export async function generateWaveTracks(tuning: WaveTuningOptions = {}): Promis
   return { tracks, profile, artists };
 }
 
-// Automatically fetch next tracks from Yandex Rotor for infinite wave playback
+// Automatically fetch next tracks from Yandex Rotor for infinite wave playback with mood filtering
 export async function fetchMoreWaveTracks(overrideLastId?: string): Promise<Track[]> {
   if (isFetchingMore) return [];
   const yaToken = useSettingsStore.getState().yandexToken || localStorage.getItem('yandex_access_token') || '';
@@ -383,6 +505,11 @@ export async function fetchMoreWaveTracks(overrideLastId?: string): Promise<Trac
     for (const item of sequence) {
       const t = item.track;
       if (!t || !t.id) continue;
+      // Filter by active mood and language
+      if (!matchesMood(t, currentTuning.mood) || !matchesLanguage(t, currentTuning.language)) {
+        continue;
+      }
+
       const tArtist = t.artists?.map((a: any) => a.name).join(', ') || '';
       const tKey = `${(t.title || '').trim().toLowerCase()}|${tArtist.trim().toLowerCase()}`;
       if (!existingKeys.has(String(t.id).toLowerCase()) && !existingKeys.has(tKey)) {

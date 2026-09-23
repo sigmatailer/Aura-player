@@ -6,6 +6,58 @@ import { Track } from '../types';
 const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
+async function makePortableCover(url?: string): Promise<string> {
+  if (!url) return '';
+  if (url.startsWith('data:') || (url.startsWith('https://') && !url.includes('localhost'))) {
+    return url;
+  }
+  if (url.startsWith('http://') && !url.includes('localhost') && !url.includes('127.0.0.1')) {
+    return url;
+  }
+
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new Promise<string>((resolve) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        const maxDim = 800;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } else {
+          resolve(url);
+        }
+        URL.revokeObjectURL(objUrl);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(url);
+      };
+      img.src = objUrl;
+    });
+  } catch (err) {
+    console.warn('Failed to convert cover to portable format:', err);
+    return url;
+  }
+}
+
 class PocketBaseService {
   public pb: PocketBase;
   private unsubscribeFavorites: (() => void) | null = null;
@@ -333,9 +385,10 @@ class PocketBaseService {
           const needServerUpdate = (localPl.coverUrl && !serverPl.coverUrl) || (localPl.tracks.length > serverTracks.length);
           if (needServerUpdate) {
             try {
+              const portableCover = await makePortableCover(localPl.coverUrl);
               await this.pb.collection('playlists').update(serverPl.id, {
                 tracks_json: localPl.tracks,
-                cover_url: localPl.coverUrl || serverPl.coverUrl || ''
+                cover_url: portableCover || serverPl.coverUrl || ''
               });
             } catch (err) {
               console.warn('Failed to update server playlist:', err);
@@ -360,17 +413,18 @@ class PocketBaseService {
         const key = localPl.name.trim().toLowerCase();
         if (!serverByName.has(key) && !localPl.cloudId) {
           try {
+            const portableCover = await makePortableCover(localPl.coverUrl);
             const created = await this.pb.collection('playlists').create({
               user: userId,
               name: localPl.name,
               tracks_json: localPl.tracks || [],
-              cover_url: localPl.coverUrl || ''
+              cover_url: portableCover || ''
             });
             localPl.cloudId = created.id;
             serverByName.set(key, {
               id: created.id,
               name: localPl.name,
-              coverUrl: localPl.coverUrl,
+              coverUrl: portableCover || localPl.coverUrl,
               tracks: localPl.tracks,
               cloudId: created.id
             });
@@ -408,11 +462,12 @@ class PocketBaseService {
         }
       }
 
+      const portableCover = await makePortableCover(playlist.coverUrl);
       const payload = {
         user: userId,
         name: playlist.name,
         tracks_json: playlist.tracks || [],
-        cover_url: playlist.coverUrl || ''
+        cover_url: portableCover || ''
       };
 
       if (recordId) {

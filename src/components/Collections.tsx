@@ -209,38 +209,42 @@ export const Collections: React.FC = () => {
   const showSidebar = isDocked || isSidebarHovered;
 
   const renderMobileTabs = () => (
-    <div className="md:hidden flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border-main)] bg-[var(--bg-surface)]/90 backdrop-blur-md overflow-x-auto scrollbar-hide shrink-0 z-20">
+    <div className="md:hidden flex items-center gap-2.5 px-3.5 py-3 border-b border-[var(--border-main)] bg-[var(--bg-surface)]/90 backdrop-blur-md overflow-x-auto scrollbar-hide shrink-0 z-20">
       <button 
         onClick={() => setView('liked')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+        className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all ${
           view === 'liked' 
-            ? 'bg-[var(--accent)] text-[var(--text-main)] shadow-sm' 
-            : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]'
+            ? 'bg-[var(--accent)]/15 text-[var(--accent)] border-2 border-[var(--accent)] shadow-[0_0_12px_var(--accent)] scale-105' 
+            : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-main)]'
         }`}
+        title="Любимые треки"
       >
-        <Heart size={14} fill={view === 'liked' ? 'currentColor' : 'none'} />
-        Любимые
+        <Heart size={20} strokeWidth={2} fill={view === 'liked' ? 'currentColor' : 'none'} />
       </button>
 
       <button 
         onClick={() => setView('downloaded')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+        className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all ${
           view === 'downloaded' 
-            ? 'bg-[var(--accent)] text-[var(--text-main)] shadow-sm' 
-            : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]'
+            ? 'bg-[var(--accent)]/15 text-[var(--accent)] border-2 border-[var(--accent)] shadow-[0_0_12px_var(--accent)] scale-105' 
+            : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-main)]'
         }`}
+        title="Скачанные треки"
       >
-        <Cloud size={14} fill={view === 'downloaded' ? 'currentColor' : 'none'} />
-        Скачанные
+        <Cloud size={20} strokeWidth={2} fill={view === 'downloaded' ? 'currentColor' : 'none'} />
       </button>
 
       <button 
         onClick={() => setIsChoiceModalOpen(true)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] active:text-[var(--text-main)] transition-colors"
+        className="w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-main)] active:scale-95 active:text-[var(--text-main)]"
+        title="Создать или импортировать плейлист"
       >
-        <Plus size={14} />
-        Создать
+        <Plus size={22} strokeWidth={2} />
       </button>
+
+      {playlists.length > 0 && (
+        <div className="w-[1px] h-7 bg-[var(--border-main)] shrink-0 mx-0.5 opacity-60" />
+      )}
 
       {playlists.map(pl => {
         const isActive = view === 'playlist' && selectedPlaylistId === pl.id;
@@ -248,13 +252,22 @@ export const Collections: React.FC = () => {
           <button 
             key={pl.id}
             onClick={() => { setSelectedPlaylistId(pl.id); setView('playlist'); }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+            className={`w-12 h-12 shrink-0 rounded-full transition-all relative p-[2px] flex items-center justify-center ${
               isActive 
-                ? 'bg-[var(--accent)] text-[var(--text-main)]' 
-                : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]'
+                ? 'border-2 border-[var(--accent)] shadow-[0_0_14px_var(--accent)] scale-105' 
+                : 'border-2 border-transparent opacity-85 active:opacity-100'
             }`}
+            title={pl.name}
           >
-            {pl.name}
+            <div className="w-full h-full rounded-full overflow-hidden bg-[var(--bg-surface)] flex items-center justify-center">
+              {pl.coverUrl ? (
+                <MediaCover src={pl.coverUrl} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[11px] font-bold text-[var(--text-secondary)]">
+                  {pl.name.slice(0, 2).toUpperCase()}
+                </span>
+              )}
+            </div>
           </button>
         );
       })}
