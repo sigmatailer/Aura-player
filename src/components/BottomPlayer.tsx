@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
-import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
+import { useThemeStore } from '../store/useThemeStore';
+import { MediaCover } from './MediaCover';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Repeat, Shuffle, Maximize2, Heart } from 'lucide-react';
 import { TrackOptionsPopover } from './TrackOptionsPopover';
 import { ArtistLinks } from './ArtistLinks';
@@ -57,19 +58,12 @@ const BottomPlayer: React.FC = () => {
         onClick={toggleFullscreen}
       >
         <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl overflow-hidden bg-[var(--bg-surface-hover)] shrink-0 shadow-md border border-white/10 relative group">
-          {isVideoUrl(coverUrl) ? (
-            <video 
-              src={coverUrl} 
-              autoPlay 
-              loop 
-              muted 
-              playsInline 
-              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = coverSpeed; }}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-            />
-          ) : (
-            <img src={coverUrl} alt="Cover" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-          )}
+          <MediaCover
+            src={coverUrl}
+            speed={coverSpeed}
+            alt="Cover"
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
           <div 
             className="absolute inset-0 bg-black/40 opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer backdrop-blur-sm"
           >

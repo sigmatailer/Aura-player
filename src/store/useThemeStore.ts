@@ -145,7 +145,8 @@ export const isVideoUrl = (url: string | null | undefined): boolean => {
          cleanUrl.endsWith('.webm') || 
          cleanUrl.endsWith('.mov') || 
          cleanUrl.endsWith('.mkv') || 
-         cleanUrl.startsWith('data:video/');
+         cleanUrl.startsWith('data:video/') ||
+         (cleanUrl.startsWith('blob:') && !cleanUrl.includes('image'));
 };
 
 interface ThemeStore {

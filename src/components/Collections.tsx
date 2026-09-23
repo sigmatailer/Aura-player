@@ -13,10 +13,10 @@ import { useModalStore } from '../store/useModalStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { ArtistLinks } from './ArtistLinks';
 import { open } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { audioService } from '../services/AudioService';
 import { PlayingIndicator } from './PlayingIndicator';
 import { Track } from '../types';
+import { pickImage } from '../utils/mediaPicker';
 
 const ActionPills = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center gap-2">
@@ -530,17 +530,23 @@ export const Collections: React.FC = () => {
       };
       const handleImageSelect = async () => {
         try {
-          const selected = await open({ multiple: false, filters: [{ name: 'Image', extensions: ['png', 'jpeg', 'jpg', 'webp'] }] });
-          if (selected && typeof selected === 'string') {
-            updatePlaylist(playlist.id, { coverUrl: convertFileSrc(selected) });
+          const dataUrl = await pickImage();
+          if (dataUrl) {
+            updatePlaylist(playlist.id, { coverUrl: dataUrl });
           }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+          console.error('Failed to update playlist cover:', e);
+        }
       };
       return (
         <div className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide">
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
             <div className="flex items-center md:items-end gap-4 md:gap-6">
-              <div className="w-20 h-20 md:w-40 md:h-40 shrink-0 rounded-2xl md:rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-lg relative group">
+              <div 
+                onClick={handleImageSelect}
+                className="w-20 h-20 md:w-40 md:h-40 shrink-0 rounded-2xl md:rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-lg relative group cursor-pointer"
+                title="Нажмите, чтобы изменить обложку"
+              >
                 <img src={playlist.coverUrl || defaultCoverUrl} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
               </div>
               <div className="flex flex-col pb-1 md:pb-2">

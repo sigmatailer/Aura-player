@@ -3,6 +3,7 @@ import { usePlayerStore } from '../store/usePlayerStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, ChevronDown } from 'lucide-react';
 import { ArtistLinks } from './ArtistLinks';
+import { MediaCover } from './MediaCover';
 import { invoke } from '@tauri-apps/api/core';
 
 // Extract dominant color from image
@@ -258,25 +259,12 @@ const FullscreenPlayer: React.FC = () => {
         <div className={`w-full md:w-[50%] max-w-[800px] min-w-0 md:min-w-[300px] flex flex-col justify-center items-center shrink-0 h-full pt-1 md:pt-2 pb-3 md:pb-2 gap-2 sm:gap-3 md:gap-6 ${mobileView === 'lyrics' ? 'hidden md:flex' : 'flex'}`}>
           
           {/* Responsive Cover Art Container */}
-          <div className="w-full flex flex-col items-center justify-center pointer-events-none shrink-0">
-            {isVideoUrl(coverUrl) ? (
-              <video 
-                src={coverUrl} 
-                autoPlay 
-                loop 
-                muted 
-                playsInline 
-                onLoadedMetadata={(e) => { e.currentTarget.playbackRate = coverSpeed; }}
-                className="w-[88vw] max-w-[370px] xs:max-w-[400px] md:w-auto md:max-w-full md:max-h-full aspect-square object-cover rounded-[24px] md:rounded-[20px] shadow-2xl bg-[var(--bg-surface-hover)]"
-              />
-            ) : (
-              <img 
-                src={coverUrl} 
-                alt="Cover" 
-                className="w-[88vw] max-w-[370px] xs:max-w-[400px] md:w-auto md:max-w-full md:max-h-full aspect-square object-cover rounded-[24px] md:rounded-[20px] shadow-2xl bg-[var(--bg-surface-hover)]"
-              />
-            )}
-          </div>
+            <MediaCover 
+              src={coverUrl} 
+              speed={coverSpeed}
+              alt="Cover" 
+              className="w-[88vw] max-w-[370px] xs:max-w-[400px] md:w-auto md:max-w-full md:max-h-full aspect-square object-cover rounded-[24px] md:rounded-[20px] shadow-2xl bg-[var(--bg-surface-hover)]"
+            />
 
           <div className="w-full shrink-0 flex flex-col items-center gap-1">
             <div className="flex flex-col gap-0.5 mb-1 text-center w-full px-4">

@@ -8,36 +8,11 @@ import { AccountTab } from './AccountTab';
 import { useSettingsStore } from '../store/usePlayerStore';
 import { useThemeStore, isVideoUrl, PRESET_THEMES, AVAILABLE_FONTS, TRACK_FONT_OPTIONS } from '../store/useThemeStore';
 import { useCacheStore, CacheStats } from '../store/useCacheStore';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
-import { readFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
-
-async function fileToMediaUrl(filePath: string): Promise<string> {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const isVideo = ['mp4', 'webm', 'mov', 'mkv'].includes(ext);
-  if (isVideo) {
-    return convertFileSrc(filePath);
-  }
-  try {
-    const bytes = await readFile(filePath);
-    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
-                 ext === 'png' ? 'image/png' :
-                 ext === 'gif' ? 'image/gif' :
-                 ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    let binary = '';
-    const uint8Array = new Uint8Array(bytes);
-    const chunkSize = 8192;
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      binary += String.fromCharCode.apply(null, Array.from(uint8Array.subarray(i, i + chunkSize)));
-    }
-    return `data:${mime};base64,${btoa(binary)}`;
-  } catch (e) {
-    console.warn('Failed to read file as data url, falling back to convertFileSrc:', e);
-    return convertFileSrc(filePath);
-  }
-}
+import { pickMediaFile } from '../utils/mediaPicker';
+import { MediaCover } from './MediaCover';
 
 function hexToHsl(hex: string): [number, number, number] {
   let c = hex.replace('#', '').trim();
@@ -1037,19 +1012,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 {customWallpaper && (
                   <div className="mb-4 flex items-center gap-3.5 p-3 bg-[var(--bg-main)]/60 border border-[var(--border-main)] rounded-xl">
                     <div className="w-14 h-14 rounded-xl overflow-hidden shadow-md shrink-0 border border-[var(--border-main)] bg-black/40 relative">
-                      {isVideoUrl(customWallpaper) ? (
-                        <video 
-                          src={customWallpaper} 
-                          autoPlay 
-                          loop 
-                          muted 
-                          playsInline 
-                          onLoadedMetadata={(e) => { e.currentTarget.playbackRate = wallpaperSpeed; }}
-                          className="w-full h-full object-cover" 
-                        />
-                      ) : (
-                        <img src={customWallpaper} alt="Wallpaper preview" className="w-full h-full object-cover" />
-                      )}
+                      <MediaCover 
+                        src={customWallpaper} 
+                        speed={wallpaperSpeed} 
+                        className="w-full h-full object-cover" 
+                      />
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-semibold text-[var(--text-main)]">Активные обои</span>
@@ -1065,12 +1032,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <button
                     onClick={async () => {
                       try {
-                        const selected = await open({
-                          multiple: false,
-                          filters: [{ name: 'Медиа (Видео, GIF, Фото)', extensions: ['mp4', 'webm', 'mov', 'mkv', 'gif', 'png', 'jpg', 'jpeg', 'webp'] }]
-                        });
-                        if (selected && typeof selected === 'string') {
-                          const mediaUrl = await fileToMediaUrl(selected);
+                        const mediaUrl = await pickMediaFile();
+                        if (mediaUrl) {
                           setWallpaper(mediaUrl);
                         }
                       } catch (err) {
@@ -1189,19 +1152,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 {customCover && (
                   <div className="mb-4 flex items-center gap-3.5 p-3 bg-[var(--bg-main)]/60 border border-[var(--border-main)] rounded-xl">
                     <div className="w-14 h-14 rounded-xl overflow-hidden shadow-md shrink-0 border border-[var(--border-main)] bg-black/40 relative">
-                      {isVideoUrl(customCover) ? (
-                        <video 
-                          src={customCover} 
-                          autoPlay 
-                          loop 
-                          muted 
-                          playsInline 
-                          onLoadedMetadata={(e) => { e.currentTarget.playbackRate = coverSpeed; }}
-                          className="w-full h-full object-cover" 
-                        />
-                      ) : (
-                        <img src={customCover} alt="Cover preview" className="w-full h-full object-cover" />
-                      )}
+                      <MediaCover 
+                        src={customCover} 
+                        speed={coverSpeed} 
+                        className="w-full h-full object-cover" 
+                      />
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-semibold text-[var(--text-main)]">Кастомная обложка</span>
@@ -1216,12 +1171,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <button
                     onClick={async () => {
                       try {
-                        const selected = await open({
-                          multiple: false,
-                          filters: [{ name: 'Медиа (Видео, GIF, Фото)', extensions: ['mp4', 'webm', 'mov', 'mkv', 'gif', 'png', 'jpg', 'jpeg', 'webp'] }]
-                        });
-                        if (selected && typeof selected === 'string') {
-                          const mediaUrl = await fileToMediaUrl(selected);
+                        const mediaUrl = await pickMediaFile();
+                        if (mediaUrl) {
                           setCustomCover(mediaUrl);
                         }
                       } catch (err) {

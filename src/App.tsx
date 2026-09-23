@@ -53,7 +53,10 @@ function App() {
 
   useEffect(() => {
     if (wallpaperVideoRef.current) {
+      wallpaperVideoRef.current.defaultMuted = true;
+      wallpaperVideoRef.current.muted = true;
       wallpaperVideoRef.current.playbackRate = wallpaperSpeed;
+      wallpaperVideoRef.current.play().catch(() => {});
     }
   }, [wallpaperSpeed, customWallpaper]);
 
@@ -166,7 +169,14 @@ function App() {
               loop
               muted
               playsInline
-              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = wallpaperSpeed; }}
+              // @ts-ignore
+              webkit-playsinline="true"
+              onLoadedMetadata={(e) => { 
+                e.currentTarget.defaultMuted = true;
+                e.currentTarget.muted = true;
+                e.currentTarget.playbackRate = wallpaperSpeed; 
+                e.currentTarget.play().catch(() => {});
+              }}
               className="absolute inset-0 w-full h-full object-cover transition-all duration-700 ease-out"
               style={{
                 filter: `blur(${wallpaperBlur}px)`,
