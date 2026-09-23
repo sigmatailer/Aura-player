@@ -10,14 +10,18 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.0.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_15.4.app 2>/dev/null || true
+          LATEST_XCODE=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | tail -n 1)
+          if [ -n "$LATEST_XCODE" ]; then
+            echo "Selecting $LATEST_XCODE"
+            sudo xcode-select -s "$LATEST_XCODE"
+          fi
           xcodebuild -version
 
       - name: Install Rust
@@ -40,7 +44,7 @@ jobs:
             npx tauri ios init --ci || npx tauri ios init || true
           fi
 
-      - name: Configure iOS Background Audio
+      - name: Configure iOS Background Audio & Project Format
         run: |
           for PLIST in $(find src-tauri/gen/apple -name "Info.plist" 2>/dev/null); do
             echo "Configuring UIBackgroundModes in $PLIST"
@@ -51,7 +55,21 @@ jobs:
 
       - name: Build iOS App (Unsigned)
         run: |
-          npx tauri ios build --no-sign --target aarch64-apple-ios --ci || npx tauri ios build --no-sign
+          export CI=true
+          npx tauri ios build --no-sign --target aarch64 || {
+            echo "Attempting fallback direct xcodebuild..."
+            cd src-tauri/gen/apple
+            xcodebuild build \
+              -workspace aura.xcodeproj/project.xcworkspace \
+              -scheme aura_iOS \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              DEVELOPMENT_TEAM=""
+            cd ../../..
+          }
 
       - name: Package into IPA
         run: |
