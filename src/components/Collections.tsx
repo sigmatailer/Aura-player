@@ -68,7 +68,7 @@ const CollectionTrackRow: React.FC<CollectionTrackRowProps> = ({
       transition={{
         layout: { duration: 0.15, ease: 'easeOut' }
       }}
-      style={{ touchAction: 'none' }}
+      style={{ touchAction: 'pan-y' }}
       className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
         isDragging
           ? 'bg-black/90 backdrop-blur-xl border-[var(--accent)] shadow-2xl ring-1 ring-[var(--accent)]/50'
@@ -380,7 +380,6 @@ export const Collections: React.FC = () => {
     if (view === 'liked') {
       return (
         <div 
-          style={{ touchAction: draggedTrackId ? 'none' : 'auto' }}
           className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide"
         >
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
@@ -459,7 +458,6 @@ export const Collections: React.FC = () => {
     if (view === 'downloaded') {
       return (
         <div 
-          style={{ touchAction: draggedTrackId ? 'none' : 'auto' }}
           className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide"
         >
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
@@ -566,7 +564,6 @@ export const Collections: React.FC = () => {
       };
       return (
         <div 
-          style={{ touchAction: draggedTrackId ? 'none' : 'auto' }}
           className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide"
         >
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
