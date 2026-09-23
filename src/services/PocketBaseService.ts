@@ -445,40 +445,51 @@ class PocketBaseService {
     }
   }
 
-  public async onPlaylistModified(playlist: Playlist) {
+  private playlistDebounceTimers = new Map<string, any>();
+
+  public onPlaylistModified(playlist: Playlist) {
     const userId = this.getUserId();
     if (!userId || this.isInternalSync || this.isSyncingPlaylists) return;
 
-    try {
-      let recordId = playlist.cloudId;
-      if (!recordId) {
-        const safeName = playlist.name.replace(/["\\]/g, '');
-        const existing = await this.pb.collection('playlists').getList(1, 1, {
-          filter: `user = "${userId}" && name = "${safeName}"`
-        });
-        if (existing.items.length > 0) {
-          recordId = existing.items[0].id;
-          playlist.cloudId = recordId;
-        }
-      }
-
-      const portableCover = await makePortableCover(playlist.coverUrl);
-      const payload = {
-        user: userId,
-        name: playlist.name,
-        tracks_json: playlist.tracks || [],
-        cover_url: portableCover || ''
-      };
-
-      if (recordId) {
-        await this.pb.collection('playlists').update(recordId, payload);
-      } else {
-        const created = await this.pb.collection('playlists').create(payload);
-        playlist.cloudId = created.id;
-      }
-    } catch (err) {
-      console.warn('onPlaylistModified error:', err);
+    if (this.playlistDebounceTimers.has(playlist.id)) {
+      clearTimeout(this.playlistDebounceTimers.get(playlist.id));
     }
+
+    const timer = setTimeout(async () => {
+      this.playlistDebounceTimers.delete(playlist.id);
+      try {
+        let recordId = playlist.cloudId;
+        if (!recordId) {
+          const safeName = playlist.name.replace(/["\\]/g, '');
+          const existing = await this.pb.collection('playlists').getList(1, 1, {
+            filter: `user = "${userId}" && name = "${safeName}"`
+          });
+          if (existing.items.length > 0) {
+            recordId = existing.items[0].id;
+            playlist.cloudId = recordId;
+          }
+        }
+
+        const portableCover = await makePortableCover(playlist.coverUrl);
+        const payload = {
+          user: userId,
+          name: playlist.name,
+          tracks_json: playlist.tracks || [],
+          cover_url: portableCover || ''
+        };
+
+        if (recordId) {
+          await this.pb.collection('playlists').update(recordId, payload);
+        } else {
+          const created = await this.pb.collection('playlists').create(payload);
+          playlist.cloudId = created.id;
+        }
+      } catch (err) {
+        console.warn('onPlaylistModified error:', err);
+      }
+    }, 600);
+
+    this.playlistDebounceTimers.set(playlist.id, timer);
   }
 
   public async onPlaylistDeleted(name: string) {

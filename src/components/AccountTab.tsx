@@ -289,13 +289,14 @@ export const AccountTab: React.FC = () => {
       </div>
 
       {/* Card: Active Devices Sync */}
-      <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm whitespace-nowrap">
+      <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-sm space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[var(--text-main)] font-bold text-sm min-w-0">
             <Smartphone size={18} className="text-[var(--accent)] shrink-0" />
-            <span>Синхронизированные устройства</span>
+            <span className="hidden sm:inline">Синхронизированные устройства</span>
+            <span className="sm:hidden inline truncate">Устройства</span>
           </div>
-          <span className="text-xs text-[var(--text-secondary)] font-medium whitespace-nowrap">
+          <span className="text-xs text-[var(--text-secondary)] font-medium shrink-0 whitespace-nowrap">
             {activeDevices.length > 0 ? `${activeDevices.length} онлайн` : '1 онлайн'}
           </span>
         </div>
@@ -305,14 +306,14 @@ export const AccountTab: React.FC = () => {
             activeDevices.map((dev, idx) => (
               <div
                 key={idx}
-                className="p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between gap-4"
+                className="p-3 sm:p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between gap-3 sm:gap-4"
               >
-                <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center text-[var(--accent)] shrink-0 border border-[var(--border-main)]">
+                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center text-[var(--accent)] shrink-0 border border-[var(--border-main)]">
                     {dev.device_name?.includes('Android') || dev.device_name?.includes('iPhone') ? (
-                      <Smartphone size={18} />
+                      <Smartphone size={17} />
                     ) : (
-                      <Monitor size={18} />
+                      <Monitor size={17} />
                     )}
                   </div>
                   <div className="min-w-0 flex-1 overflow-hidden">
@@ -327,8 +328,9 @@ export const AccountTab: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <span className="text-[10px] text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0 whitespace-nowrap ml-2">
-                  Синхронизировано
+                <span className="text-[10px] text-emerald-400 font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0 whitespace-nowrap ml-1.5 sm:ml-2">
+                  <span className="hidden sm:inline">Синхронизировано</span>
+                  <span className="sm:hidden inline">Онлайн</span>
                 </span>
               </div>
             ))

@@ -465,7 +465,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         </div>
 
         {/* Right Main Content Area */}
-        <div className={`flex-1 flex flex-col p-6 sm:p-7 md:p-8 overflow-y-auto overflow-x-hidden scrollbar-hide [&::-webkit-scrollbar]:hidden [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0 [scrollbar-width:none] [-ms-overflow-style:none] ${customWallpaper ? 'bg-black/20' : 'bg-[var(--bg-main)]'}`}>
+        <div className={`flex-1 flex flex-col p-3.5 sm:p-6 md:p-8 overflow-y-auto overflow-x-hidden scrollbar-hide [&::-webkit-scrollbar]:hidden [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0 [scrollbar-width:none] [-ms-overflow-style:none] ${customWallpaper ? 'bg-black/20' : 'bg-[var(--bg-main)]'}`}>
           
           {/* Section: Account & Sync */}
           {activeTab === 'account' && <AccountTab />}

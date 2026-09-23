@@ -62,25 +62,29 @@ const CollectionTrackRow: React.FC<CollectionTrackRowProps> = ({
       onDragEnd={onDragEnd}
       onClick={onTrackClick}
       whileDrag={{
-        scale: 0.992,
+        scale: 1.015,
         zIndex: 50,
-        cursor: 'grabbing'
       }}
       transition={{
-        layout: { type: 'spring', damping: 26, stiffness: 280 }
+        layout: { duration: 0.15, ease: 'easeOut' }
       }}
+      style={{ touchAction: 'none' }}
       className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
         isDragging
-          ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
+          ? 'bg-black/90 backdrop-blur-xl border-[var(--accent)] shadow-2xl ring-1 ring-[var(--accent)]/50'
           : isActive 
-            ? 'transition-colors duration-150 bg-[var(--bg-surface-hover)]/80 border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30 backdrop-blur-sm' 
-            : 'transition-colors duration-150 bg-transparent border-[var(--border-main)] hover:bg-[var(--bg-surface-hover)]/40'
+            ? 'bg-[var(--bg-surface-hover)]/80 border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30 backdrop-blur-sm' 
+            : 'bg-transparent border-[var(--border-main)] hover:bg-[var(--bg-surface-hover)]/40'
       }`}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <div 
-          onPointerDown={(e) => dragControls.start(e)}
-          className="touch-none text-[var(--text-secondary)] opacity-40 group-hover:opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-2 -ml-1 transition-opacity shrink-0"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            dragControls.start(e);
+          }}
+          style={{ touchAction: 'none' }}
+          className="touch-none text-[var(--text-secondary)] opacity-50 group-hover:opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-2.5 -ml-1 transition-opacity shrink-0 select-none"
           title="Перетащить трек"
         >
           <GripVertical size={16} />
@@ -375,7 +379,10 @@ export const Collections: React.FC = () => {
   
     if (view === 'liked') {
       return (
-        <div className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide">
+        <div 
+          style={{ touchAction: draggedTrackId ? 'none' : 'auto' }}
+          className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide"
+        >
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
             <div className="flex items-center md:items-end gap-4 md:gap-6">
               <div className="w-20 h-20 md:w-40 md:h-40 rounded-2xl md:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
@@ -408,6 +415,7 @@ export const Collections: React.FC = () => {
             ) : (
               <Reorder.Group
                 axis="y"
+                layoutScroll
                 values={likedTracks}
                 onReorder={reorderLikedTracks}
                 className="flex flex-col flex-1 list-none m-0 p-0"
@@ -450,7 +458,10 @@ export const Collections: React.FC = () => {
     
     if (view === 'downloaded') {
       return (
-        <div className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide">
+        <div 
+          style={{ touchAction: draggedTrackId ? 'none' : 'auto' }}
+          className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide"
+        >
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
             <div className="flex items-center md:items-end gap-4 md:gap-6">
               <div className="w-20 h-20 md:w-40 md:h-40 rounded-2xl md:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
@@ -490,6 +501,7 @@ export const Collections: React.FC = () => {
             ) : (
               <Reorder.Group
                 axis="y"
+                layoutScroll
                 values={downloadedTracks}
                 onReorder={reorderDownloadedTracks}
                 className="flex flex-col flex-1 list-none m-0 p-0"
@@ -553,7 +565,10 @@ export const Collections: React.FC = () => {
         }
       };
       return (
-        <div className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide">
+        <div 
+          style={{ touchAction: draggedTrackId ? 'none' : 'auto' }}
+          className="flex-1 h-full flex flex-col px-3.5 md:pl-10 md:pr-6 pt-3 md:pt-10 pb-20 md:pb-24 overflow-y-auto scrollbar-hide"
+        >
           <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6 shrink-0">
             <div className="flex items-center md:items-end gap-4 md:gap-6">
               <div 
@@ -612,6 +627,7 @@ export const Collections: React.FC = () => {
             ) : (
               <Reorder.Group
                 axis="y"
+                layoutScroll
                 values={playlist.tracks}
                 onReorder={(newOrder) => reorderPlaylistTracks(playlist.id, newOrder)}
                 className="flex flex-col flex-1 list-none m-0 p-0"
