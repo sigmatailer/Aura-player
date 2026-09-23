@@ -45,12 +45,14 @@ jobs:
 
       - name: Configure iOS Background Audio
         run: |
-          for PLIST in $(find src-tauri/gen/apple -name "Info.plist"); do
-            echo "Configuring UIBackgroundModes in $PLIST"
+          for PLIST in $(find src-tauri/gen/apple -name "Info.plist" 2>/dev/null); do
+            echo "Configuring UIBackgroundModes and ATS in $PLIST"
             /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null || true
           done
-          node scripts/setup-ios.cjs
+          node scripts/setup-ios.cjs || true
 
       - name: Build iOS App (Unsigned)
         run: |
