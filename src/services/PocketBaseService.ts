@@ -19,7 +19,18 @@ class PocketBaseService {
     this.pb = new PocketBase(url);
     this.pb.autoCancellation(false);
 
-    // Initial check
+    // Ensure PocketBase authStore is in sync with localStorage tokens
+    const savedToken = localStorage.getItem('aura_pb_token');
+    const savedUser = localStorage.getItem('aura_pb_user');
+    if (!this.pb.authStore.isValid && savedToken && savedUser) {
+      try {
+        const userObj = JSON.parse(savedUser);
+        this.pb.authStore.save(savedToken, userObj);
+      } catch (e) {
+        console.warn('Failed to restore authStore:', e);
+      }
+    }
+
     if (this.pb.authStore.isValid && this.pb.authStore.record) {
       const record = this.pb.authStore.record;
       useAuthStore.getState().setUser({
@@ -30,7 +41,6 @@ class PocketBaseService {
       });
       useAuthStore.getState().setToken(this.pb.authStore.token);
       this.subscribeRealtime();
-      // Auto sync in background on app start
       setTimeout(() => {
         this.syncAll().catch(err => console.warn('Startup syncAll error:', err));
       }, 500);
@@ -51,7 +61,7 @@ class PocketBaseService {
   }
 
   public isLoggedIn(): boolean {
-    return this.pb.authStore.isValid;
+    return this.pb.authStore.isValid && !!this.pb.authStore.record?.id;
   }
 
   public getUserId(): string | null {
@@ -141,7 +151,10 @@ class PocketBaseService {
   }
 
   public async syncAll() {
-    if (!this.isLoggedIn()) return;
+    if (!this.isLoggedIn()) {
+      useAuthStore.getState().setSyncStatus('Войдите в аккаунт');
+      return;
+    }
     useAuthStore.getState().setSyncing(true);
     useAuthStore.getState().setSyncStatus('Синхронизация...');
     try {
@@ -162,12 +175,8 @@ class PocketBaseService {
     this.isSyncingFavorites = true;
 
     try {
-      const storedSynced = localStorage.getItem('synced_favorite_ids');
-      const syncedIds = new Set<string>(storedSynced ? JSON.parse(storedSynced) : []);
-
       const records = await this.pb.collection('favorites').getFullList({
-        filter: `user = "${userId}"`,
-        sort: '-created'
+        filter: `user = "${userId}"`
       });
 
       const serverTracks: Track[] = records.map(r => ({
@@ -184,54 +193,39 @@ class PocketBaseService {
       const collectionStore = useCollectionStore.getState();
       const localLiked = collectionStore.likedTracks;
       const serverMap = new Map(serverTracks.map(t => [t.id, t]));
+      const localMap = new Map(localLiked.map(t => [t.id, t]));
 
-      // 1. Upload local favorites that are NOT on server AND NOT previously synced
+      // 1. Upload local favorites that are NOT on server
       for (const track of localLiked) {
         if (!serverMap.has(track.id)) {
-          if (!syncedIds.has(track.id)) {
-            try {
-              await this.pb.collection('favorites').create({
-                user: userId,
-                track_id: track.id,
-                title: track.title,
-                artist: track.artist,
-                album: track.album || '',
-                cover_url: track.originalCoverUrl || '',
-                duration: track.duration || 0,
-                file_path: track.filePath || ''
-              });
-              serverMap.set(track.id, track);
-            } catch (e) {
-              console.warn('Failed to upload favorite to cloud:', e);
-            }
+          try {
+            await this.pb.collection('favorites').create({
+              user: userId,
+              track_id: track.id,
+              title: track.title,
+              artist: track.artist,
+              album: track.album || '',
+              cover_url: track.originalCoverUrl || '',
+              duration: track.duration || 0,
+              file_path: track.filePath || ''
+            });
+            serverMap.set(track.id, track);
+          } catch (e) {
+            console.warn('Failed to upload favorite to cloud:', e);
           }
         }
       }
 
-      // 2. Assemble final liked list: keep tracks on server or newly added local ones
-      const finalLiked: Track[] = [];
-      const addedIds = new Set<string>();
-
-      for (const track of localLiked) {
-        if (serverMap.has(track.id) || !syncedIds.has(track.id)) {
-          finalLiked.push(track);
-          addedIds.add(track.id);
-        }
-      }
-
+      // 2. Add server favorites to local store if missing
+      const merged: Track[] = [...localLiked];
       for (const track of serverTracks) {
-        if (!addedIds.has(track.id)) {
-          finalLiked.push(track);
-          addedIds.add(track.id);
+        if (!localMap.has(track.id)) {
+          merged.push(track);
         }
       }
 
-      collectionStore.reorderLikedTracks(finalLiked);
-      const newSyncedIds = finalLiked.map(t => t.id);
-      try {
-        localStorage.setItem('synced_favorite_ids', JSON.stringify(newSyncedIds));
-      } catch (e) {
-        console.warn('Failed to save synced_favorite_ids:', e);
+      if (merged.length !== localLiked.length) {
+        collectionStore.reorderLikedTracks(merged);
       }
     } catch (err) {
       console.error('syncFavorites error:', err);
@@ -245,15 +239,7 @@ class PocketBaseService {
     if (!userId) return;
 
     try {
-      const storedSynced = localStorage.getItem('synced_favorite_ids');
-      const syncedIds = new Set<string>(storedSynced ? JSON.parse(storedSynced) : []);
-
       if (isLiked) {
-        syncedIds.add(track.id);
-        try {
-          localStorage.setItem('synced_favorite_ids', JSON.stringify(Array.from(syncedIds)));
-        } catch {}
-
         const existing = await this.pb.collection('favorites').getList(1, 1, {
           filter: `user = "${userId}" && track_id = "${track.id}"`
         });
@@ -270,11 +256,6 @@ class PocketBaseService {
           });
         }
       } else {
-        syncedIds.delete(track.id);
-        try {
-          localStorage.setItem('synced_favorite_ids', JSON.stringify(Array.from(syncedIds)));
-        } catch {}
-
         const existing = await this.pb.collection('favorites').getList(1, 1, {
           filter: `user = "${userId}" && track_id = "${track.id}"`
         });
@@ -294,8 +275,7 @@ class PocketBaseService {
 
     try {
       const records = await this.pb.collection('playlists').getFullList({
-        filter: `user = "${userId}"`,
-        sort: '-updated'
+        filter: `user = "${userId}"`
       });
 
       const serverPlaylists = records.map(r => ({
@@ -303,91 +283,109 @@ class PocketBaseService {
         name: r.name,
         coverUrl: r.cover_url || undefined,
         tracks: Array.isArray(r.tracks_json) ? r.tracks_json : [],
-        cloudId: r.id,
-        updatedAt: new Date(r.updated).getTime()
+        cloudId: r.id
       }));
 
       const collectionStore = useCollectionStore.getState();
       const localPlaylists = [...collectionStore.playlists];
 
-      const serverById = new Map(serverPlaylists.map(p => [p.id, p]));
-      const serverByName = new Map(serverPlaylists.map(p => [p.name.trim().toLowerCase(), p]));
+      const serverByName = new Map<string, typeof serverPlaylists[0]>();
+      const serverById = new Map<string, typeof serverPlaylists[0]>();
+      for (const sp of serverPlaylists) {
+        serverByName.set(sp.name.trim().toLowerCase(), sp);
+        serverById.set(sp.id, sp);
+      }
 
-      const localByCloudId = new Map(localPlaylists.filter(p => p.cloudId).map(p => [p.cloudId!, p]));
-      const localByName = new Map(localPlaylists.map(p => [p.name.trim().toLowerCase(), p]));
+      const localByName = new Map<string, Playlist>();
+      const localByCloudId = new Map<string, Playlist>();
+      for (const lp of localPlaylists) {
+        localByName.set(lp.name.trim().toLowerCase(), lp);
+        if (lp.cloudId) localByCloudId.set(lp.cloudId, lp);
+      }
 
-      // 1. Process server playlists: merge into local
+      // 1. Merge server playlists into local store
       for (const serverPl of serverPlaylists) {
-        const localPl = localByCloudId.get(serverPl.id) || localByName.get(serverPl.name.trim().toLowerCase());
+        const key = serverPl.name.trim().toLowerCase();
+        const localPl = localByCloudId.get(serverPl.id) || localByName.get(key);
+        const serverTracks = Array.isArray(serverPl.tracks) ? serverPl.tracks : [];
+
         if (localPl) {
           localPl.cloudId = serverPl.id;
-          const serverTime = serverPl.updatedAt || 0;
-          const localTime = localPl.updatedAt || 0;
 
-          // If server is newer (or equal/close) or local has no updatedAt, adopt server data
-          if (serverTime >= localTime) {
-            localPl.tracks = serverPl.tracks;
-            if (serverPl.coverUrl !== undefined) {
-              localPl.coverUrl = serverPl.coverUrl || undefined;
-            }
-            localPl.name = serverPl.name;
-            localPl.updatedAt = serverTime;
+          // Merge cover: if server has cover and local doesn't, take it
+          if (serverPl.coverUrl && !localPl.coverUrl) {
+            localPl.coverUrl = serverPl.coverUrl;
+          }
+
+          // Merge tracks without duplicates
+          const trackMap = new Map<string, Track>();
+          for (const t of localPl.tracks) if (t?.id) trackMap.set(t.id, t);
+          for (const t of serverTracks) if (t?.id) trackMap.set(t.id, t);
+
+          // If server has more or equal tracks, adopt server ordering
+          if (serverTracks.length >= localPl.tracks.length) {
+            localPl.tracks = serverTracks;
           } else {
-            // Local is newer: push local tracks & cover to server
+            localPl.tracks = Array.from(trackMap.values());
+          }
+
+          // If local has extra tracks or cover not yet on server, update server record
+          const needServerUpdate = (localPl.coverUrl && !serverPl.coverUrl) || (localPl.tracks.length > serverTracks.length);
+          if (needServerUpdate) {
             try {
               await this.pb.collection('playlists').update(serverPl.id, {
-                name: localPl.name,
                 tracks_json: localPl.tracks,
-                cover_url: localPl.coverUrl || ''
+                cover_url: localPl.coverUrl || serverPl.coverUrl || ''
               });
             } catch (err) {
-              console.warn('Failed to update playlist on server:', err);
+              console.warn('Failed to update server playlist:', err);
             }
           }
         } else {
-          // New playlist from another device
-          localPlaylists.push({
+          // New playlist from server: add to local
+          const newLocalPl: Playlist = {
             id: 'pl_' + serverPl.id,
             name: serverPl.name,
-            coverUrl: serverPl.coverUrl,
-            tracks: serverPl.tracks,
-            cloudId: serverPl.id,
-            updatedAt: serverPl.updatedAt
-          });
+            coverUrl: serverPl.coverUrl || undefined,
+            tracks: serverTracks,
+            cloudId: serverPl.id
+          };
+          localPlaylists.push(newLocalPl);
+          localByName.set(key, newLocalPl);
         }
       }
 
-      // 2. Process local playlists: upload new local, or purge deleted
-      const finalPlaylists: Playlist[] = [];
-      for (const pl of localPlaylists) {
-        if (pl.cloudId && !serverById.has(pl.cloudId)) {
-          // Deleted on server on another device, remove locally
-          continue;
-        }
-
-        if (!pl.cloudId && !serverByName.has(pl.name.trim().toLowerCase())) {
-          // Newly created local playlist: upload to server
+      // 2. Upload any local playlists not present on server
+      for (const localPl of localPlaylists) {
+        const key = localPl.name.trim().toLowerCase();
+        if (!serverByName.has(key) && !localPl.cloudId) {
           try {
             const created = await this.pb.collection('playlists').create({
               user: userId,
-              name: pl.name,
-              tracks_json: pl.tracks,
-              cover_url: pl.coverUrl || ''
+              name: localPl.name,
+              tracks_json: localPl.tracks || [],
+              cover_url: localPl.coverUrl || ''
             });
-            pl.cloudId = created.id;
-            pl.updatedAt = new Date(created.updated).getTime();
+            localPl.cloudId = created.id;
+            serverByName.set(key, {
+              id: created.id,
+              name: localPl.name,
+              coverUrl: localPl.coverUrl,
+              tracks: localPl.tracks,
+              cloudId: created.id
+            });
           } catch (e) {
-            console.warn('Failed to upload new local playlist to cloud:', e);
+            console.warn('Failed to create playlist on server:', e);
           }
         }
-        finalPlaylists.push(pl);
       }
 
       this.isInternalSync = true;
-      collectionStore.setPlaylists(finalPlaylists);
+      collectionStore.setPlaylists(localPlaylists);
       this.isInternalSync = false;
     } catch (err) {
       console.error('syncPlaylists error:', err);
+      throw err;
     } finally {
       this.isSyncingPlaylists = false;
     }
@@ -400,8 +398,9 @@ class PocketBaseService {
     try {
       let recordId = playlist.cloudId;
       if (!recordId) {
+        const safeName = playlist.name.replace(/["\\]/g, '');
         const existing = await this.pb.collection('playlists').getList(1, 1, {
-          filter: `user = "${userId}" && name = "${playlist.name.replace(/"/g, '\\"')}"`
+          filter: `user = "${userId}" && name = "${safeName}"`
         });
         if (existing.items.length > 0) {
           recordId = existing.items[0].id;
@@ -410,18 +409,16 @@ class PocketBaseService {
       }
 
       const payload = {
+        user: userId,
         name: playlist.name,
-        tracks_json: playlist.tracks,
+        tracks_json: playlist.tracks || [],
         cover_url: playlist.coverUrl || ''
       };
 
       if (recordId) {
         await this.pb.collection('playlists').update(recordId, payload);
       } else {
-        const created = await this.pb.collection('playlists').create({
-          user: userId,
-          ...payload
-        });
+        const created = await this.pb.collection('playlists').create(payload);
         playlist.cloudId = created.id;
       }
     } catch (err) {
@@ -434,8 +431,9 @@ class PocketBaseService {
     if (!userId || this.isInternalSync) return;
 
     try {
+      const safeName = name.replace(/["\\]/g, '');
       const existing = await this.pb.collection('playlists').getList(1, 1, {
-        filter: `user = "${userId}" && name = "${name.replace(/"/g, '\\"')}"`
+        filter: `user = "${userId}" && name = "${safeName}"`
       });
       if (existing.items.length > 0) {
         await this.pb.collection('playlists').delete(existing.items[0].id);
@@ -501,8 +499,7 @@ class PocketBaseService {
             name: record.name,
             coverUrl: record.cover_url || undefined,
             tracks: Array.isArray(record.tracks_json) ? record.tracks_json : [],
-            cloudId: record.id,
-            updatedAt: new Date(record.updated).getTime()
+            cloudId: record.id
           };
 
           if (idx >= 0) {
@@ -571,8 +568,7 @@ class PocketBaseService {
 
     try {
       return await this.pb.collection('device_sync').getFullList({
-        filter: `user = "${userId}"`,
-        sort: '-updated'
+        filter: `user = "${userId}"`
       });
     } catch {
       return [];
