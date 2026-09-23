@@ -2,21 +2,23 @@ name: Build iOS IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
 
 jobs:
   build-ios:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Xcode 16
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: 'latest-stable'
-
-      - name: Check Xcode version
-        run: xcodebuild -version
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.0.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_15.4.app 2>/dev/null || true
+          xcodebuild -version
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -26,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
@@ -35,12 +37,12 @@ jobs:
       - name: Initialize iOS Project (if needed)
         run: |
           if [ ! -d "src-tauri/gen/apple" ]; then
-            npx tauri ios init
+            npx tauri ios init --ci || npx tauri ios init || true
           fi
 
       - name: Configure iOS Background Audio
         run: |
-          for PLIST in $(find src-tauri/gen/apple -name "Info.plist"); do
+          for PLIST in $(find src-tauri/gen/apple -name "Info.plist" 2>/dev/null); do
             echo "Configuring UIBackgroundModes in $PLIST"
             /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST" 2>/dev/null || true
@@ -49,15 +51,19 @@ jobs:
 
       - name: Build iOS App (Unsigned)
         run: |
-          npx tauri ios build --no-sign
+          npx tauri ios build --no-sign --target aarch64-apple-ios --ci || npx tauri ios build --no-sign
 
       - name: Package into IPA
         run: |
           mkdir -p Payload
-          APP_DIR=$(find src-tauri/gen/apple -name "*.app" -type d | head -n 1)
+          APP_DIR=$(find src-tauri/gen/apple -name "*.app" -type d 2>/dev/null | head -n 1)
           if [ -z "$APP_DIR" ]; then
             echo "Searching deeper in DerivedData / build..."
             APP_DIR=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$APP_DIR" ]; then
+            echo "Searching in target..."
+            APP_DIR=$(find src-tauri/target -name "*.app" -type d 2>/dev/null | head -n 1)
           fi
           if [ -z "$APP_DIR" ]; then
             echo "Error: No .app bundle found!"
@@ -65,12 +71,12 @@ jobs:
           fi
           echo "Found app bundle at: $APP_DIR"
           cp -r "$APP_DIR" Payload/
-          zip -r Aura.ipa Payload/
-          ls -lh Aura.ipa
+          zip -r Aura-Player.ipa Payload/
+          ls -lh Aura-Player.ipa
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Aura-iOS-unsigned
-          path: Aura.ipa
+          name: Aura-iOS-IPA
+          path: Aura-Player.ipa
           retention-days: 14
