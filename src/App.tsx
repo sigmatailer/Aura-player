@@ -212,47 +212,47 @@ function App() {
             {/* Верхняя иконка (Главная) */}
             <div className="flex flex-col w-full items-center shrink-0">
               <button 
-                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'library' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                className={`p-2.5 rounded-xl transition-colors duration-200 ${activeTab === 'library' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
                 onClick={() => setActiveTab('library')}
                 data-tooltip="Главная"
                 data-tooltip-pos="right"
               >
-                <NavHomeIcon size={22} active={activeTab === 'library'} />
+                <NavHomeIcon size={26} active={activeTab === 'library'} />
               </button>
             </div>
 
             {/* Центральный блок: Волна, Поиск, Коллекция */}
             <div className="flex flex-col gap-6 w-full items-center flex-1 justify-center">
               <button 
-                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'myvibe' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                className={`p-2.5 rounded-xl transition-colors duration-200 ${activeTab === 'myvibe' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
                 onClick={() => setActiveTab('myvibe')}
                 data-tooltip="Моя волна"
                 data-tooltip-pos="right"
               >
-                <NavWaveIcon size={22} active={activeTab === 'myvibe'} />
+                <NavWaveIcon size={26} active={activeTab === 'myvibe'} />
               </button>
               <button 
-                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'search' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                className={`p-2.5 rounded-xl transition-colors duration-200 ${activeTab === 'search' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
                 onClick={() => setActiveTab('search')}
                 data-tooltip="Поиск"
                 data-tooltip-pos="right"
               >
-                <NavSearchIcon size={22} active={activeTab === 'search'} />
+                <NavSearchIcon size={26} active={activeTab === 'search'} />
               </button>
               <button 
-                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'collections' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                className={`p-2.5 rounded-xl transition-colors duration-200 ${activeTab === 'collections' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
                 onClick={() => setActiveTab('collections')}
                 data-tooltip="Моя коллекция"
                 data-tooltip-pos="right"
               >
-                <NavCollectionIcon size={22} active={activeTab === 'collections'} />
+                <NavCollectionIcon size={26} active={activeTab === 'collections'} />
               </button>
             </div>
 
             {/* Нижний блок: Аккаунт и Настройки */}
             <div className="mt-auto flex flex-col gap-3 w-full items-center shrink-0">
               <button 
-                className={`p-2.5 rounded-xl transition-all duration-200 relative ${user ? 'bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                className={`p-2 rounded-xl transition-colors duration-200 relative ${user ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
                 onClick={() => setIsSettingsOpen(true)}
                 data-tooltip={user ? (user.name || user.email) : "Войти в аккаунт"}
                 data-tooltip-pos="right"
@@ -262,19 +262,19 @@ function App() {
                     {(user.name || user.email).charAt(0).toUpperCase()}
                   </div>
                 ) : (
-                  <User size={20} strokeWidth={1.5} />
+                  <User size={22} strokeWidth={1.5} />
                 )}
                 {user && (
                   <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[var(--bg-main)]" />
                 )}
               </button>
               <button 
-                className={`p-3 rounded-xl transition-all duration-200 ${isSettingsOpen ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                className={`p-2.5 rounded-xl transition-colors duration-200 ${isSettingsOpen ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
                 onClick={() => setIsSettingsOpen(true)}
                 data-tooltip="Настройки"
                 data-tooltip-pos="right"
               >
-                <NavSettingsIcon size={22} active={isSettingsOpen} />
+                <NavSettingsIcon size={26} active={isSettingsOpen} />
               </button>
             </div>
           </aside>
@@ -323,28 +323,28 @@ function App() {
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'library' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('library')}
         >
-          <NavHomeIcon size={21} active={activeTab === 'library'} />
+          <NavHomeIcon size={24} active={activeTab === 'library'} />
           <span className="text-[10px]">Главная</span>
         </button>
         <button 
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'myvibe' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('myvibe')}
         >
-          <NavWaveIcon size={21} active={activeTab === 'myvibe'} />
+          <NavWaveIcon size={24} active={activeTab === 'myvibe'} />
           <span className="text-[10px]">Волна</span>
         </button>
         <button 
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'search' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('search')}
         >
-          <NavSearchIcon size={21} active={activeTab === 'search'} />
+          <NavSearchIcon size={24} active={activeTab === 'search'} />
           <span className="text-[10px]">Поиск</span>
         </button>
         <button 
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'collections' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('collections')}
         >
-          <NavCollectionIcon size={21} active={activeTab === 'collections'} />
+          <NavCollectionIcon size={24} active={activeTab === 'collections'} />
           <span className="text-[10px]">Коллекция</span>
         </button>
         <button 
@@ -356,7 +356,7 @@ function App() {
               {(user.name || user.email).charAt(0).toUpperCase()}
             </div>
           ) : (
-            <NavSettingsIcon size={21} active={isSettingsOpen} />
+            <NavSettingsIcon size={24} active={isSettingsOpen} />
           )}
           <span className="text-[10px]">{user ? 'Аккаунт' : 'Опции'}</span>
         </button>
