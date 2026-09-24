@@ -8,7 +8,8 @@ import TitleBar from './components/TitleBar';
 import { SettingsModal } from './components/SettingsModal';
 import { EqualizerModal } from './components/EqualizerModal';
 import BottomPlayer from './components/BottomPlayer';
-import { Settings, Library, Search, Heart, Radio, User } from 'lucide-react';
+import { User } from 'lucide-react';
+import { NavHomeIcon, NavWaveIcon, NavSearchIcon, NavCollectionIcon, NavSettingsIcon } from './components/NavIcons';
 import { useDiscordRPC } from './hooks/useDiscordRPC';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -208,68 +209,74 @@ function App() {
         <div className="flex flex-1 overflow-hidden">
           {/* Левая боковая панель навигации (только десктоп) */}
           <aside className={`hidden md:flex w-[72px] shrink-0 flex-col py-6 border-r border-[var(--border-main)] ${customWallpaper ? 'bg-black/40 backdrop-blur-md' : 'bg-[var(--bg-main)]'} z-20 transition-colors`}>
-            <div className="flex flex-col gap-6 w-full items-center flex-1 justify-center">
-            <button 
-              className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'myvibe' ? 'bg-[var(--accent)] text-[var(--text-main)] shadow-lg shadow-[var(--accent)]/20' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
-              onClick={() => setActiveTab('myvibe')}
-              data-tooltip="Моя волна"
-              data-tooltip-pos="right"
-            >
-              <Radio size={22} strokeWidth={activeTab === 'myvibe' ? 2 : 1.5} />
-            </button>
-            <button 
-              className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'search' ? 'bg-[var(--accent)] text-[var(--text-main)] shadow-lg shadow-[var(--accent)]/20' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
-              onClick={() => setActiveTab('search')}
-              data-tooltip="Поиск"
-              data-tooltip-pos="right"
-            >
-              <Search size={22} strokeWidth={activeTab === 'search' ? 2 : 1.5} />
-            </button>
-            <button 
-              className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'library' ? 'bg-[var(--accent)] text-[var(--text-main)] shadow-lg shadow-[var(--accent)]/20' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
-              onClick={() => setActiveTab('library')}
-              data-tooltip="Медиатека"
-              data-tooltip-pos="right"
-            >
-              <Library size={22} strokeWidth={activeTab === 'library' ? 2 : 1.5} />
-            </button>
-            <button 
-              className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'collections' ? 'bg-[var(--accent)] text-[var(--text-main)] shadow-lg shadow-[var(--accent)]/20' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
-              onClick={() => setActiveTab('collections')}
-              data-tooltip="Моя коллекция"
-              data-tooltip-pos="right"
-            >
-              <Heart size={22} strokeWidth={activeTab === 'collections' ? 2 : 1.5} />
-            </button>
-          </div>
+            {/* Верхняя иконка (Главная) */}
+            <div className="flex flex-col w-full items-center shrink-0">
+              <button 
+                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'library' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                onClick={() => setActiveTab('library')}
+                data-tooltip="Главная"
+                data-tooltip-pos="right"
+              >
+                <NavHomeIcon size={22} active={activeTab === 'library'} />
+              </button>
+            </div>
 
-          <div className="mt-auto flex flex-col gap-3 w-full items-center shrink-0">
-            <button 
-              className={`p-2.5 rounded-xl transition-all duration-200 relative ${user ? 'bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
-              onClick={() => setIsSettingsOpen(true)}
-              data-tooltip={user ? (user.name || user.email) : "Войти в аккаунт"}
-              data-tooltip-pos="right"
-            >
-              {user ? (
-                <div className="w-6 h-6 rounded-lg bg-[var(--accent)] text-[var(--text-main)] font-black text-xs flex items-center justify-center">
-                  {(user.name || user.email).charAt(0).toUpperCase()}
-                </div>
-              ) : (
-                <User size={20} strokeWidth={1.5} />
-              )}
-              {user && (
-                <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[var(--bg-main)]" />
-              )}
-            </button>
-            <button 
-              className="p-3 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)] transition-all duration-200"
-              onClick={() => setIsSettingsOpen(true)}
-              data-tooltip="Настройки"
-              data-tooltip-pos="right"
-            >
-              <Settings size={22} strokeWidth={1.5} />
-            </button>
-          </div>
+            {/* Центральный блок: Волна, Поиск, Коллекция */}
+            <div className="flex flex-col gap-6 w-full items-center flex-1 justify-center">
+              <button 
+                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'myvibe' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                onClick={() => setActiveTab('myvibe')}
+                data-tooltip="Моя волна"
+                data-tooltip-pos="right"
+              >
+                <NavWaveIcon size={22} active={activeTab === 'myvibe'} />
+              </button>
+              <button 
+                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'search' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                onClick={() => setActiveTab('search')}
+                data-tooltip="Поиск"
+                data-tooltip-pos="right"
+              >
+                <NavSearchIcon size={22} active={activeTab === 'search'} />
+              </button>
+              <button 
+                className={`p-3 rounded-xl transition-all duration-200 ${activeTab === 'collections' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-md shadow-[var(--accent)]/15' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                onClick={() => setActiveTab('collections')}
+                data-tooltip="Моя коллекция"
+                data-tooltip-pos="right"
+              >
+                <NavCollectionIcon size={22} active={activeTab === 'collections'} />
+              </button>
+            </div>
+
+            {/* Нижний блок: Аккаунт и Настройки */}
+            <div className="mt-auto flex flex-col gap-3 w-full items-center shrink-0">
+              <button 
+                className={`p-2.5 rounded-xl transition-all duration-200 relative ${user ? 'bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                onClick={() => setIsSettingsOpen(true)}
+                data-tooltip={user ? (user.name || user.email) : "Войти в аккаунт"}
+                data-tooltip-pos="right"
+              >
+                {user ? (
+                  <div className="w-6 h-6 rounded-lg bg-[var(--accent)] text-[var(--text-main)] font-black text-xs flex items-center justify-center">
+                    {(user.name || user.email).charAt(0).toUpperCase()}
+                  </div>
+                ) : (
+                  <User size={20} strokeWidth={1.5} />
+                )}
+                {user && (
+                  <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[var(--bg-main)]" />
+                )}
+              </button>
+              <button 
+                className={`p-3 rounded-xl transition-all duration-200 ${isSettingsOpen ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-surface-hover)]'}`}
+                onClick={() => setIsSettingsOpen(true)}
+                data-tooltip="Настройки"
+                data-tooltip-pos="right"
+              >
+                <NavSettingsIcon size={22} active={isSettingsOpen} />
+              </button>
+            </div>
           </aside>
   
           {/* Основной контент */}
@@ -313,35 +320,35 @@ function App() {
       {/* Мобильная нижняя навигационная панель */}
       <nav className={`md:hidden shrink-0 pb-3.5 pt-1.5 border-t border-[var(--border-main)] flex items-center justify-around px-2 z-40 select-none ${customWallpaper ? 'bg-black/70 backdrop-blur-md' : 'bg-[var(--bg-surface)]'}`}>
         <button 
+          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'library' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
+          onClick={() => setActiveTab('library')}
+        >
+          <NavHomeIcon size={21} active={activeTab === 'library'} />
+          <span className="text-[10px]">Главная</span>
+        </button>
+        <button 
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'myvibe' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('myvibe')}
         >
-          <Radio size={20} strokeWidth={activeTab === 'myvibe' ? 2.5 : 1.75} />
+          <NavWaveIcon size={21} active={activeTab === 'myvibe'} />
           <span className="text-[10px]">Волна</span>
         </button>
         <button 
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'search' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('search')}
         >
-          <Search size={20} strokeWidth={activeTab === 'search' ? 2.5 : 1.75} />
+          <NavSearchIcon size={21} active={activeTab === 'search'} />
           <span className="text-[10px]">Поиск</span>
-        </button>
-        <button 
-          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'library' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
-          onClick={() => setActiveTab('library')}
-        >
-          <Library size={20} strokeWidth={activeTab === 'library' ? 2.5 : 1.75} />
-          <span className="text-[10px]">Треки</span>
         </button>
         <button 
           className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'collections' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
           onClick={() => setActiveTab('collections')}
         >
-          <Heart size={20} strokeWidth={activeTab === 'collections' ? 2.5 : 1.75} />
-          <span className="text-[10px]">Любимое</span>
+          <NavCollectionIcon size={21} active={activeTab === 'collections'} />
+          <span className="text-[10px]">Коллекция</span>
         </button>
         <button 
-          className="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-colors relative"
+          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${isSettingsOpen ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'} hover:text-[var(--text-main)] relative`}
           onClick={() => setIsSettingsOpen(true)}
         >
           {user ? (
@@ -349,7 +356,7 @@ function App() {
               {(user.name || user.email).charAt(0).toUpperCase()}
             </div>
           ) : (
-            <Settings size={20} strokeWidth={1.75} />
+            <NavSettingsIcon size={21} active={isSettingsOpen} />
           )}
           <span className="text-[10px]">{user ? 'Аккаунт' : 'Опции'}</span>
         </button>
