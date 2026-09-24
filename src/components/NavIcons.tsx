@@ -86,15 +86,13 @@ export const NavSearchIcon: React.FC<IconProps> = ({ size = 25, className = '', 
         width={size} 
         height={size} 
         viewBox="0 0 24 24" 
-        fill="currentColor" 
+        fill="none" 
         className={className}
       >
-        {/* Solid filled circular search lens with diagonal handle */}
-        <path 
-          fillRule="evenodd" 
-          clipRule="evenodd" 
-          d="M 11 2.8 C 15.5 2.8 19.2 6.5 19.2 11 C 19.2 13 18.5 14.8 17.3 16.2 L 21.6 20.5 C 22.1 21 22.1 21.9 21.6 22.4 C 21.1 22.9 20.2 22.9 19.7 22.4 L 15.4 18.1 C 14.1 19 12.6 19.5 11 19.5 C 6.5 19.5 2.8 15.8 2.8 11 C 2.8 6.5 6.5 2.8 11 2.8 Z M 11 5.4 C 7.9 5.4 5.4 7.9 5.4 11 C 5.4 14.1 7.9 16.6 11 16.6 C 14.1 16.6 16.6 14.1 16.6 11 C 16.6 7.9 14.1 5.4 11 5.4 Z" 
-        />
+        {/* Solid filled circular search lens matching Screenshot 2 */}
+        <circle cx="10.8" cy="10.8" r="7.2" fill="currentColor" />
+        {/* Diagonal handle */}
+        <line x1="15.8" y1="15.8" x2="20" y2="20" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" />
       </svg>
     );
   }
@@ -111,8 +109,8 @@ export const NavSearchIcon: React.FC<IconProps> = ({ size = 25, className = '', 
       strokeLinejoin="round" 
       className={className}
     >
-      <path d="M 5.2 10.8 C 5.2 14.4 8.1 17.3 11.7 17.3 C 15.3 17.3 18.2 14.4 18.2 10.8 C 18.2 7.2 15.3 4.3 11.7 4.3 C 10.6 4.3 9.5 4.6 8.5 5.2" />
-      <line x1="16.4" y1="15.8" x2="20.2" y2="19.6" strokeWidth={2.5} />
+      <circle cx="10.8" cy="10.8" r="6.2" />
+      <line x1="15.5" y1="15.5" x2="20" y2="20" strokeWidth={2.5} />
     </svg>
   );
 };
@@ -171,11 +169,11 @@ export const NavSettingsIcon: React.FC<IconProps> = ({ size = 25, className = ''
         fill="currentColor" 
         className={className}
       >
-        {/* Solid filled hexagon with circular center cutout */}
+        {/* Solid filled octagon silhouette with center circle cutout */}
         <path 
           fillRule="evenodd" 
           clipRule="evenodd" 
-          d="M 9.5 2.8 H 14.5 C 15.6 2.8 16.6 3.4 17.2 4.4 L 20.1 9.4 C 20.7 10.4 20.7 11.6 20.1 12.6 L 17.2 17.6 C 16.6 18.6 15.6 19.2 14.5 19.2 H 9.5 C 8.4 19.2 7.4 18.6 6.8 17.6 L 3.9 12.6 C 3.3 11.6 3.3 10.4 3.9 9.4 L 6.8 4.4 C 7.4 3.4 8.4 2.8 9.5 2.8 Z M 12 8 C 9.8 8 8 9.8 8 12 C 8 14.2 9.8 16 12 16 C 14.2 16 16 14.2 16 12 C 16 9.8 14.2 8 12 8 Z" 
+          d="M 10.2 3.4 H 13.8 C 14.8 3.4 15.7 3.8 16.4 4.5 L 18 6.1 C 18.7 6.8 19.2 7.6 19.2 8.5 V 15.5 C 19.2 16.4 18.7 17.2 18 17.9 L 16.4 19.5 C 15.7 20.2 14.8 20.6 13.8 20.6 H 10.2 C 9.2 20.6 8.3 20.2 7.6 19.5 L 6 17.9 C 5.3 17.2 4.8 16.4 4.8 15.5 V 8.5 C 4.8 7.6 5.3 6.8 6 6.1 L 7.6 4.5 C 8.3 3.8 9.2 3.4 10.2 3.4 Z M 12 8.6 C 10.1 8.6 8.6 10.1 8.6 12 C 8.6 13.9 10.1 15.4 12 15.4 C 13.9 15.4 15.4 13.9 15.4 12 C 15.4 10.1 13.9 8.6 12 8.6 Z" 
         />
       </svg>
     );
@@ -188,14 +186,17 @@ export const NavSettingsIcon: React.FC<IconProps> = ({ size = 25, className = ''
       viewBox="0 0 24 24" 
       fill="none" 
       stroke="currentColor" 
-      strokeWidth={2.1} 
+      strokeWidth={1.9} 
       strokeLinecap="round" 
       strokeLinejoin="round" 
       className={className}
     >
-      <path d="M 9.5 3.8 H 14.5 C 15.3 3.8 16.1 4.3 16.5 5.1 L 18.9 9.3 C 19.2 9.8 19.4 10.4 19.4 11" />
-      <path d="M 19.4 13.8 C 19.4 14.4 19.2 15 18.9 15.5 L 16.5 19.7 C 16.1 20.5 15.3 21 14.5 21 H 9.5 C 8.7 21 7.9 20.5 7.5 19.7 L 5.1 15.5 C 4.7 14.7 4.7 13.7 4.7 12.8 V 11.2 C 4.7 10.3 4.7 9.3 5.1 8.5 L 7.5 4.3 C 7.9 3.5 8.7 3.8 9.5 3.8 Z" />
-      <circle cx="12" cy="12" r="3.2" strokeWidth={2.2} />
+      {/* Upper-left segment matching Screenshot 1 */}
+      <path d="M 4.8 16.2 V 8.6 C 4.8 7.7 5.3 6.9 6 6.2 L 7.6 4.6 C 8.3 3.9 9.2 3.5 10.2 3.5 H 13.8 C 14.8 3.5 15.7 3.9 16.4 4.6 L 18 6.2 C 18.7 6.9 19.2 7.7 19.2 8.6 V 10.6" />
+      {/* Lower-right segment with signature opening */}
+      <path d="M 19.2 13.4 V 15.4 C 19.2 16.3 18.7 17.1 18 17.8 L 16.4 19.4 C 15.7 20.1 14.8 20.5 13.8 20.5 H 10.2 C 9.4 20.5 8.7 20.2 8.1 19.7 L 8 19.6" />
+      {/* Center concentric ring */}
+      <circle cx="12" cy="12" r="3.3" strokeWidth={1.8} />
     </svg>
   );
 };
