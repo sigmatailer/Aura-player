@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { PlayerState, SettingsState } from '../types';
+import { audioService } from '../services/AudioService';
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
@@ -20,29 +21,44 @@ export const usePlayerStore = create<PlayerState>()(
       addToHistory: (track) => set((state) => {
         if (!track || !track.id) return state;
         const currentHist = state.history || [];
-        const filtered = currentHist.filter(t => t.id !== track.id);
-        return { history: [track, ...filtered].slice(0, 30) };
+        const trackKey = (track.filePath || track.id).toLowerCase();
+        const filtered = currentHist.filter(t => {
+          const k = (t.filePath || t.id).toLowerCase();
+          return k !== trackKey;
+        });
+        return { history: [track, ...filtered].slice(0, 50) };
       }),
+      clearHistory: () => set({ history: [] }),
+      isHistoryDrawerOpen: false,
+      setHistoryDrawerOpen: (open) => set({ isHistoryDrawerOpen: open }),
       
       eqPreset: 'flat',
       eqBands: [0, 0, 0, 0, 0, 0],
       eqPreAmp: 0,
 
       setQueue: (tracks) => set({ queue: tracks }),
+      clearQueue: () => {
+        try {
+          audioService.stop();
+        } catch (e) {
+          console.error('Error stopping audio on clearQueue:', e);
+        }
+        set({
+          queue: [],
+          currentTrackIndex: -1,
+          isPlaying: false,
+          progress: 0,
+        });
+      },
       playContext: (tracks, index) => set({ queue: tracks, currentTrackIndex: index, isPlaying: true, progress: 0 }),
       
-      addTrack: (track) => set((state) => {
-        if (!track || !track.id) return state;
-        const isDuplicate = state.queue.some(t => 
-          t.id === track.id || 
-          (t.filePath && track.filePath && t.filePath === track.filePath) ||
-          (t.title && track.title && t.artist && track.artist &&
-           t.title.trim().toLowerCase() === track.title.trim().toLowerCase() &&
-           t.artist.trim().toLowerCase() === track.artist.trim().toLowerCase())
-        );
-        if (isDuplicate) return state;
-        return { queue: [...state.queue, track] };
-      }),
+      addTrack: (track) => set((state) => ({ 
+        queue: [...state.queue, track] 
+      })),
+
+      addTracks: (tracks) => set((state) => ({ 
+        queue: [...state.queue, ...tracks] 
+      })),
 
       removeTrack: (trackId) => set((state) => {
         const indexToRemove = state.queue.findIndex(t => t.id === trackId);

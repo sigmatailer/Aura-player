@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SlidersHorizontal, Sparkles, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, Pause, SlidersHorizontal } from 'lucide-react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
-import { generateWaveTracks, WaveTuningOptions, PlaybackProfile } from '../services/WaveRecommendationService';
+import { useThemeStore } from '../store/useThemeStore';
+import { generateWaveTracks, WaveTuningOptions } from '../services/WaveRecommendationService';
 import { Track } from '../types';
 
 interface WaveBannerProps {
@@ -10,72 +12,65 @@ interface WaveBannerProps {
   className?: string;
 }
 
+interface MoodItem {
+  id: string;
+  label: string;
+  tuningMood: WaveTuningOptions['mood'];
+}
+
+const MOOD_OPTIONS: MoodItem[] = [
+  { id: 'all', label: 'Обычная', tuningMood: 'all' },
+  { id: 'energetic', label: 'Энергия', tuningMood: 'energetic' },
+  { id: 'calm', label: 'Чилл', tuningMood: 'calm' },
+  { id: 'happy', label: 'Весёлая', tuningMood: 'happy' },
+  { id: 'sad', label: 'Грустная', tuningMood: 'sad' },
+];
+
 export const WaveBanner: React.FC<WaveBannerProps> = ({ onArtistsUpdate, className = '' }) => {
   const { queue, currentTrackIndex, isPlaying, togglePlayPause, playContext, history } = usePlayerStore();
   const { likedTracks } = useCollectionStore();
+  const { getActiveTheme, transparencyEnabled, windowOpacity, glassBlur, glassStrength } = useThemeStore();
+  const activeTheme = getActiveTheme();
+  const accent = activeTheme?.colors?.accent || '#ff5500';
 
   const [loading, setLoading] = useState(false);
-  const [isTunerOpen, setIsTunerOpen] = useState(false);
-  const [tuning, setTuning] = useState<WaveTuningOptions>({
-    mood: 'all',
-    character: 'discovery',
-    language: 'auto'
-  });
-  const [activeProfile, setActiveProfile] = useState<PlaybackProfile | null>(null);
-
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animFrameRef = useRef<number>(0);
-  const burstRef = useRef<{ active: boolean; progress: number }>({ active: false, progress: 0 });
-  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [selectedMoodId, setSelectedMoodId] = useState<string>('all');
 
   const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
   const isVibeMode = queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
 
-  // Gather top 5 covers from history, liked, or queue
-  const recentCovers: Track[] = (() => {
-    const list: Track[] = [];
+  // Preview tracks (upcoming in wave or from recent/liked)
+  const previewTracks: Track[] = (() => {
+    if (isVibeMode && queue.length > currentTrackIndex + 1) {
+      return queue.slice(currentTrackIndex + 1, currentTrackIndex + 4);
+    }
+    const pool = [...(likedTracks || []), ...(history || [])];
+    const unique: Track[] = [];
     const seen = new Set<string>();
-
-    const addTrack = (t?: Track) => {
-      if (!t || !t.id || seen.has(t.id)) return;
-      seen.add(t.id);
-      list.push(t);
-    };
-
-    (history || []).forEach(addTrack);
-    (likedTracks || []).forEach(addTrack);
-    (queue || []).forEach(addTrack);
-
-    return list.slice(0, 5);
+    for (const t of pool) {
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        unique.push(t);
+        if (unique.length >= 3) break;
+      }
+    }
+    return unique;
   })();
 
-  // Close tuner on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setIsTunerOpen(false);
-      }
-    };
-    if (isTunerOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isTunerOpen]);
-
   // Start wave generation
-  const handleLaunchWave = async (overrideTuning?: WaveTuningOptions) => {
+  const handleLaunchWave = async (moodId?: string) => {
     try {
       setLoading(true);
-      // Trigger energetic wave surge animation
-      burstRef.current = { active: true, progress: 0 };
+      const targetMoodId = moodId || selectedMoodId;
+      const moodObj = MOOD_OPTIONS.find(m => m.id === targetMoodId) || MOOD_OPTIONS[0];
+      const opts: WaveTuningOptions = {
+        mood: moodObj.tuningMood,
+        character: 'discovery',
+        language: 'auto'
+      };
+      const { tracks, artists } = await generateWaveTracks(opts);
 
-      const opts = overrideTuning || tuning;
-      const { tracks, profile, artists } = await generateWaveTracks(opts);
-      setActiveProfile(profile);
-
-      if (onArtistsUpdate && artists.length > 0) {
+      if (artists && artists.length > 0 && onArtistsUpdate) {
         onArtistsUpdate(artists);
       }
 
@@ -83,159 +78,129 @@ export const WaveBanner: React.FC<WaveBannerProps> = ({ onArtistsUpdate, classNa
         playContext(tracks, 0);
       }
     } catch (err) {
-      console.error('Failed to launch wave:', err);
+      console.error('Failed to launch Wave:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Wave Line Canvas Animation
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Cycle through moods
+  const cycleMood = (direction: number = 1) => {
+    const currentIdx = MOOD_OPTIONS.findIndex(m => m.id === selectedMoodId);
+    const nextIdx = (currentIdx + direction + MOOD_OPTIONS.length) % MOOD_OPTIONS.length;
+    const newMood = MOOD_OPTIONS[nextIdx];
+    setSelectedMoodId(newMood.id);
+    handleLaunchWave(newMood.id);
+  };
 
-    let phase = 0;
-
-    const render = () => {
-      const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
-      const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-
-      ctx.clearRect(0, 0, width, height);
-
-      // Resolve theme accent color dynamically
-      const style = getComputedStyle(document.documentElement);
-      const rawAccent = style.getPropertyValue('--accent').trim() || '#3b82f6';
-
-      const isWaveActive = isVibeMode && isPlaying;
-      const speed = isWaveActive ? 0.045 : 0.012;
-      phase += speed;
-
-      // Handle burst ripple on click
-      if (burstRef.current.active) {
-        burstRef.current.progress += 0.02;
-        if (burstRef.current.progress >= 1.5) {
-          burstRef.current.active = false;
-        }
-      }
-
-      // Draw flowing wave curve
-      ctx.beginPath();
-      const points = 140;
-      for (let i = 0; i <= points; i++) {
-        const normX = i / points;
-        const x = normX * width;
-
-        // Base curve: starts lower under covers on left, arches smoothly towards tuner on right
-        const baseY = height * (0.65 - 0.22 * normX + 0.04 * Math.sin(normX * Math.PI));
-
-        // Sine wave oscillations
-        let oscillation = 0;
-        if (isWaveActive) {
-          oscillation = Math.sin(normX * 8 - phase) * (height * 0.14)
-                      + Math.sin(normX * 15 + phase * 1.4) * (height * 0.07);
-        } else {
-          oscillation = Math.sin(normX * 5 - phase) * (height * 0.04);
-        }
-
-        // Surge impulse traveling across from left to right
-        if (burstRef.current.active) {
-          const dist = Math.abs(normX - burstRef.current.progress);
-          const surgeFactor = Math.max(0, 1 - dist * 3.2);
-          oscillation += Math.sin(normX * 22 - phase * 3) * (height * 0.32) * surgeFactor;
-        }
-
-        const y = baseY + oscillation;
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-
-      // Stroke styles with accent color
-      if (isWaveActive) {
-        ctx.lineWidth = 3.0 * window.devicePixelRatio;
-        ctx.strokeStyle = rawAccent;
-        ctx.shadowColor = rawAccent;
-        ctx.shadowBlur = 14 * window.devicePixelRatio;
-      } else {
-        ctx.lineWidth = 2.0 * window.devicePixelRatio;
-        ctx.strokeStyle = rawAccent;
-        ctx.globalAlpha = 0.45;
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
-      }
-
-      ctx.stroke();
-      ctx.globalAlpha = 1.0;
-
-      animFrameRef.current = requestAnimationFrame(render);
-    };
-
-    animFrameRef.current = requestAnimationFrame(render);
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [isVibeMode, isPlaying]);
+  const currentMoodObj = MOOD_OPTIONS.find(m => m.id === selectedMoodId) || MOOD_OPTIONS[0];
 
   return (
-    <div className={`relative w-full h-[76px] sm:h-[86px] flex items-center justify-between px-4 sm:px-8 rounded-3xl bg-[var(--bg-surface)]/80 backdrop-blur-xl border border-[var(--border-main)] select-none shadow-md transition-all duration-300 group ${isTunerOpen ? 'z-50' : 'z-20'} ${className}`}>
+    <div 
+      className={`relative w-full h-[340px] sm:h-[370px] rounded-[28px] overflow-hidden select-none border transition-all duration-500 ${className}`}
+      style={{
+        background: transparencyEnabled 
+          ? `linear-gradient(180deg, ${accent}33 0%, rgba(14, 14, 19, ${Math.max(0.12, (windowOpacity / 100) * 0.45)}) 45%, rgba(8, 8, 10, ${Math.max(0.18, (windowOpacity / 100) * 0.65)}) 100%)`
+          : `linear-gradient(180deg, ${accent}26 0%, #0e0e13 45%, #08080a 100%)`,
+        backdropFilter: transparencyEnabled && glassBlur > 0 ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.2}%)` : undefined,
+        WebkitBackdropFilter: transparencyEnabled && glassBlur > 0 ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.2}%)` : undefined,
+        borderColor: transparencyEnabled 
+          ? `rgba(255, 255, 255, ${0.08 + (glassStrength / 100) * 0.14})` 
+          : 'rgba(255, 255, 255, 0.08)',
+        boxShadow: transparencyEnabled 
+          ? `0 20px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,${(glassStrength / 100) * 0.15})` 
+          : '0 20px 50px rgba(0,0,0,0.4)'
+      }}
+    >
+      {/* Specular sheen when transparency is active */}
+      {transparencyEnabled && (
+        <div 
+          className="absolute inset-0 pointer-events-none bg-gradient-to-tr from-white/[0.04] via-transparent to-white/[0.07] z-10" 
+          style={{ opacity: Math.max(0.1, glassStrength / 100) }}
+        />
+      )}
       
-      {/* Background Animated Accent Wave Canvas */}
-      <canvas 
-        ref={canvasRef} 
-        className="absolute inset-0 w-full h-full pointer-events-none rounded-3xl z-0" 
+      {/* 1. Dotify Radial Ambient Bloom Glow */}
+      <div 
+        className="absolute inset-0 pointer-events-none transition-all duration-700"
+        style={{
+          background: `radial-gradient(ellipse 75% 60% at 50% 25%, ${accent}55 0%, ${accent}18 50%, transparent 80%)`
+        }}
       />
 
-      {/* Left side: Play/Pause, Title, Divider, 5 Covers */}
-      <div className="relative z-10 flex items-center gap-3 sm:gap-4 shrink-0">
-        
-        {/* Play/Pause Button */}
+      {/* 2. Abstract Dotify Wave Squiggle on the right */}
+      <div className="absolute right-4 md:right-10 top-0 bottom-0 w-[280px] sm:w-[340px] pointer-events-none z-10 overflow-visible">
+        <svg 
+          viewBox="0 0 340 449" 
+          preserveAspectRatio="none" 
+          className="w-full h-full overflow-visible pointer-events-none"
+        >
+          <defs>
+            <linearGradient id="dotify-wave-grad" x1="50%" y1="0%" x2="50%" y2="100%">
+              <stop offset="0%" stopColor={accent} stopOpacity="0.85" />
+              <stop offset="35%" stopColor={accent} stopOpacity="0.45" />
+              <stop offset="70%" stopColor="#ffffff" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+          <motion.path
+            d="M 334.447 52 C 270 54, 150 96, 55 162 L 305.418 120.361 L 5.44727 302.361 L 319.947 218.861 C 319.947 218.861, 52.9473 293.361, 133.947 449.0"
+            fill="none"
+            stroke="url(#dotify-wave-grad)"
+            strokeWidth="18"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+          />
+        </svg>
+      </div>
+
+      {/* 3. Left Section: Giant Typography + Mood Switcher Pill */}
+      <div className="absolute left-6 sm:left-10 md:left-12 top-10 sm:top-12 flex flex-col items-start gap-4 z-20">
+        <div className="text-[52px] sm:text-[64px] md:text-[72px] font-black leading-[0.88] tracking-[-2px] text-white drop-shadow-md select-none">
+          Моя<br />волна
+        </div>
+
+        {/* Mood switcher capsule */}
         <button
-          onClick={() => {
-            if (isVibeMode) {
-              togglePlayPause();
-            } else {
-              handleLaunchWave();
-            }
+          onClick={() => cycleMood(1)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            cycleMood(-1);
           }}
-          disabled={loading}
-          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white hover:scale-108 active:scale-95 transition-all cursor-pointer bg-white/10 hover:bg-white/20 shadow-lg shadow-black/20"
-          title={isVibeMode && isPlaying ? "Пауза" : "Запустить Мою волну"}
+          className="flex items-center gap-2 h-[32px] px-3.5 rounded-full bg-white/10 hover:bg-white/18 active:scale-95 border border-white/15 backdrop-blur-md transition-all cursor-pointer shadow-sm group"
+          title="Нажмите, чтобы переключить настроение (ПКМ - назад)"
         >
-          {loading ? (
-            <div className="w-6 h-6 border-3 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-          ) : isVibeMode && isPlaying ? (
-            <Pause size={24} fill="currentColor" />
-          ) : (
-            <Play size={24} fill="currentColor" className="ml-0.5" />
-          )}
+          <SlidersHorizontal size={13} className="text-white/80 group-hover:text-white transition-colors" />
+          <AnimatePresence mode="wait">
+            <motion.span 
+              key={currentMoodObj.id}
+              initial={{ opacity: 0, y: 3, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -3, scale: 0.95 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="text-[13px] font-semibold text-white/90 group-hover:text-white tracking-tight"
+            >
+              {currentMoodObj.label}
+            </motion.span>
+          </AnimatePresence>
         </button>
+      </div>
 
-        {/* Title */}
-        <span 
-          onClick={() => {
-            if (!isVibeMode || !isPlaying) handleLaunchWave();
-          }}
-          className="font-bold text-[18px] sm:text-[22px] text-white tracking-tight cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap drop-shadow-sm"
-        >
-          Моя волна
-        </span>
-
-        {/* Divider */}
-        {recentCovers.length > 0 && <div className="w-[1px] h-7 bg-white/20 mx-1 sm:mx-2 shrink-0" />}
-
-        {/* Recent Track Covers - up to 2 on small screens, 5 on larger screens */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {recentCovers.map((track, idx) => {
+      {/* 4. Right Section: Floating Upcoming Covers + Big Circular Play Button */}
+      <div className="absolute right-6 sm:right-10 bottom-6 sm:bottom-8 flex items-end gap-5 z-20 pointer-events-auto">
+        
+        {/* Floating preview covers */}
+        <div className="hidden sm:flex items-center gap-3">
+          {previewTracks.map((track, idx) => {
             const cover = track.customCoverPath || track.originalCoverUrl || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=200&auto=format&fit=crop';
             return (
-              <div
+              <motion.div
                 key={track.id + '_' + idx}
+                whileHover={{ scale: 1.08, y: -4 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => {
                   const idxInQueue = queue.findIndex(t => t.id === track.id);
                   if (idxInQueue !== -1) {
@@ -244,169 +209,48 @@ export const WaveBanner: React.FC<WaveBannerProps> = ({ onArtistsUpdate, classNa
                     usePlayerStore.getState().playContext([track, ...queue], 0);
                   }
                 }}
-                className={`${idx >= 2 ? 'hidden sm:block' : ''} w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden shrink-0 border border-white/20 shadow-md relative group/cover cursor-pointer transition-transform duration-200 hover:scale-115 hover:z-20 bg-[var(--bg-surface-hover)]`}
-                data-tooltip={`${track.title} • ${track.artist}`}
-                data-tooltip-pos="bottom"
+                className="w-[72px] h-[72px] md:w-[80px] md:h-[80px] rounded-[20px] overflow-hidden border border-white/20 shadow-xl bg-black/40 cursor-pointer transition-shadow hover:shadow-2xl hover:border-white/40"
+                title={`${track.title} • ${track.artist}`}
               >
                 <img 
                   src={cover} 
-                  alt={track.title} 
+                  alt={track.title}
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=200&auto=format&fit=crop';
                   }}
                 />
-              </div>
+              </motion.div>
             );
           })}
-
-          {recentCovers.length === 0 && (
-            <div className="text-xs text-white/40 italic px-1 hidden sm:inline">
-              Нет недавних треков
-            </div>
-          )}
         </div>
-      </div>
 
-      {/* Right side: Tuner Button & Popover */}
-      <div className="relative z-10 flex items-center gap-2" ref={popoverRef}>
-        <button
-          onClick={() => setIsTunerOpen(!isTunerOpen)}
-          className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all duration-200 cursor-pointer ${
-            isTunerOpen 
-              ? 'bg-white/20 text-white shadow-md ring-1 ring-white/30' 
-              : 'text-white/70 hover:text-white hover:bg-white/10'
-          }`}
-          title="Настройка Моей волны"
+        {/* Big White Circular Play Button (Dotify Me button) */}
+        <motion.button
+          onClick={() => {
+            if (isVibeMode) {
+              togglePlayPause();
+            } else {
+              handleLaunchWave();
+            }
+          }}
+          disabled={loading}
+          whileHover={{ scale: 1.06, boxShadow: `0 16px 44px ${accent}77` }}
+          whileTap={{ scale: 0.93 }}
+          style={{
+            boxShadow: isVibeMode && isPlaying ? `0 12px 36px ${accent}66` : '0 12px 36px rgba(0,0,0,0.5)'
+          }}
+          className="w-[80px] h-[80px] sm:w-[86px] sm:h-[86px] rounded-full bg-white text-black flex items-center justify-center cursor-pointer transition-all shrink-0"
+          title={isVibeMode && isPlaying ? "Пауза" : "Запустить Мою волну"}
         >
-          <SlidersHorizontal size={22} strokeWidth={2} />
-        </button>
-
-        {/* Tuner Popover Menu - Positioned with high z-index and solid opaque background */}
-        {isTunerOpen && (
-          <div className="absolute right-0 top-full mt-3 w-[360px] bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.9)] z-[100] flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-[var(--text-main)]">
-            
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-main)]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Sparkles size={16} className="text-[var(--accent)] shrink-0" />
-                <h3 className="text-sm font-bold tracking-tight text-[var(--text-main)] whitespace-nowrap">
-                  Настройка волны
-                </h3>
-              </div>
-              <span className="text-[11px] text-[var(--text-secondary)] font-medium whitespace-nowrap pl-2">
-                {activeProfile 
-                  ? `${activeProfile.totalAnalyzed} треков • ${activeProfile.dominantLanguage === 'russian' ? 'Русский' : activeProfile.dominantLanguage === 'foreign' ? 'Иностранный' : 'Микс'}`
-                  : 'Анализ 15 треков'}
-              </span>
-            </div>
-
-            {/* Language filter */}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                Язык треков
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'auto', label: 'Авто' },
-                  { id: 'russian', label: 'Русский' },
-                  { id: 'foreign', label: 'Иностранный' }
-                ].map(opt => {
-                  const active = tuning.language === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => setTuning(prev => ({ ...prev, language: opt.id as any }))}
-                      className={`h-9 px-1.5 flex items-center justify-center text-[12px] font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap text-center ${
-                        active 
-                          ? 'bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25' 
-                          : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-white'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Mood filter */}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                Настроение
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'all', label: 'Любое' },
-                  { id: 'energetic', label: 'Бодрое' },
-                  { id: 'calm', label: 'Спокойное' }
-                ].map(opt => {
-                  const active = tuning.mood === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => setTuning(prev => ({ ...prev, mood: opt.id as any }))}
-                      className={`h-9 px-1.5 flex items-center justify-center text-[12px] font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap text-center ${
-                        active 
-                          ? 'bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25' 
-                          : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-white'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Character filter */}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                Характер
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'discovery', label: 'Незнакомое' },
-                  { id: 'favorite', label: 'Любимое' },
-                  { id: 'popular', label: 'Популярное' }
-                ].map(opt => {
-                  const active = tuning.character === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => setTuning(prev => ({ ...prev, character: opt.id as any }))}
-                      className={`h-9 px-1.5 flex items-center justify-center text-[12px] font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap text-center ${
-                        active 
-                          ? 'bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25' 
-                          : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-white'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Apply & Regenerate button */}
-            <button
-              onClick={() => {
-                setIsTunerOpen(false);
-                handleLaunchWave(tuning);
-              }}
-              disabled={loading}
-              className="mt-1.5 w-full py-2.5 px-3 rounded-xl bg-[var(--accent)] hover:opacity-90 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[var(--accent)]/30 transition-all cursor-pointer"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <RefreshCw size={14} />
-                  <span>Обновить волну</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
+          {loading ? (
+            <div className="w-7 h-7 border-3 border-black border-t-transparent rounded-full animate-spin" />
+          ) : isVibeMode && isPlaying ? (
+            <Pause size={34} fill="currentColor" className="text-black" />
+          ) : (
+            <Play size={34} fill="currentColor" className="ml-1 text-black" />
+          )}
+        </motion.button>
       </div>
     </div>
   );

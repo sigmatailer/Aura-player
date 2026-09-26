@@ -19,6 +19,7 @@ export const GlobalTooltip: React.FC = () => {
     const handlePointerOver = (e: PointerEvent) => {
       const target = (e.target as HTMLElement)?.closest?.('[data-tooltip], [title]') as HTMLElement | null;
       if (!target) return;
+      if (target.closest('[data-no-tooltip]')) return;
 
       // Intercept and remove native title to prevent OS gray rectangle
       let text = target.getAttribute('data-tooltip');

@@ -1,9 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, Maximize2, SlidersHorizontal, Image as ImageIcon, Heart } from 'lucide-react';
+import { 
+  Play, Pause, SkipBack, SkipForward, Volume2, Repeat, Shuffle, 
+  Maximize2, SlidersHorizontal, Image as ImageIcon, Heart, 
+  ThumbsDown, MoreVertical 
+} from 'lucide-react';
 import { ArtistLinks } from './ArtistLinks';
+import { TrackOptionsPopover } from './TrackOptionsPopover';
+import { EqualizerPopover } from './EqualizerPopover';
 
 const TopPlayer: React.FC = () => {
   const { 
@@ -15,82 +22,17 @@ const TopPlayer: React.FC = () => {
   const customCover = useThemeStore(state => state.customCover);
   const coverSpeed = useThemeStore(state => state.coverSpeed);
   const coverVideoRef = useRef<HTMLVideoElement>(null);
+  const eqButtonRef = useRef<HTMLButtonElement>(null);
+  const [isEqOpen, setIsEqOpen] = useState(false);
+  const [volumeInputText, setVolumeInputText] = useState<string | null>(null);
 
   const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
   const coverUrl = customCover || currentTrack?.customCoverPath || currentTrack?.originalCoverUrl || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=200&auto=format&fit=crop';
 
-  useEffect(() => {
-    if (coverVideoRef.current) {
-      coverVideoRef.current.playbackRate = coverSpeed;
-    }
-  }, [coverSpeed, coverUrl]);
-
-  const [volInput, setVolInput] = useState(Math.round(volume * 100).toString());
-  const [scrubbingProgress, setScrubbingProgress] = useState<number | null>(null);
-  const [isOverlayVisible, setIsOverlayVisible] = useState(false);
-  const [lastNonZeroVol, setLastNonZeroVol] = useState(volume > 0 ? volume : 0.8);
-  const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-    };
-  }, []);
-
-  const handleCoverClick = () => {
-    setIsOverlayVisible(prev => {
-      const next = !prev;
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-      if (next) {
-        overlayTimerRef.current = setTimeout(() => {
-          setIsOverlayVisible(false);
-        }, 5000);
-      }
-      return next;
-    });
-  };
-
-  const resetOverlayTimer = () => {
-    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-    overlayTimerRef.current = setTimeout(() => {
-      setIsOverlayVisible(false);
-    }, 5000);
-  };
-
-  const toggleMute = () => {
-    if (volume > 0) {
-      setLastNonZeroVol(volume);
-      setVolume(0);
-    } else {
-      setVolume(lastNonZeroVol || 0.8);
-    }
-  };
-
-  useEffect(() => {
-    if (document.activeElement?.id !== 'vol-input') {
-      setVolInput(Math.round(volume * 100).toString());
-    }
-  }, [volume]);
-
-  const handleVolInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value;
-    if (val.length > 3) return; // Max 100
-    setVolInput(val);
-    const num = parseInt(val, 10);
-    if (!isNaN(num) && num >= 0 && num <= 100) {
-      setVolume(num / 100);
-    }
-  };
-
-  const activeProgress = scrubbingProgress !== null ? scrubbingProgress : (progress || 0);
-
   return (
-    <div className="w-full flex flex-col md:flex-row items-center gap-4 sm:gap-6 lg:gap-10 mt-0 bg-transparent">
-      {/* Cover Art */}
-      <div 
-        onClick={handleCoverClick}
-        className="w-[88vw] max-w-[340px] xs:max-w-[370px] aspect-square md:w-[340px] md:h-[340px] lg:w-[400px] lg:h-[400px] shrink-0 rounded-[24px] md:rounded-[28px] overflow-hidden bg-[var(--bg-surface-hover)] shadow-2xl shadow-black/80 ring-1 ring-white/10 relative group transition-all duration-300 cursor-pointer select-none"
-      >
+    <div className="w-full flex flex-col md:flex-row items-center gap-4 sm:gap-6 md:gap-8 lg:gap-12 mt-0 bg-transparent select-none">
+      {/* Cover Art - Left (or Top on mobile) */}
+      <div className="w-[180px] h-[180px] sm:w-[240px] sm:h-[240px] md:w-[320px] md:h-[320px] lg:w-[370px] lg:h-[370px] shrink-0 rounded-[20px] overflow-hidden bg-transparent shadow-2xl shadow-black/80 border border-[var(--border-main)] relative group transition-all duration-300">
         {currentTrack || customCover ? (
           <>
             {isVideoUrl(coverUrl) ? (
@@ -105,206 +47,250 @@ const TopPlayer: React.FC = () => {
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
               />
             ) : (
-              <img src={coverUrl} alt="Cover" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+              <img 
+                src={coverUrl} 
+                alt="Cover" 
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+              />
             )}
-            
-            {/* Interactive Overlay: Shows on click and auto-hides after 5 seconds; hover on desktop */}
-            <div 
-              className={`absolute inset-0 bg-black/25 backdrop-blur-[1px] transition-all duration-300 flex flex-col justify-between p-3 ${
-                isOverlayVisible 
-                  ? 'opacity-100 pointer-events-auto' 
-                  : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'
-              }`}
-            >
-              {/* Top Row: Fullscreen Button */}
-              <div className="flex justify-end">
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    usePlayerStore.getState().toggleFullscreen();
-                  }}
-                  className="p-2 sm:p-2.5 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 text-white hover:scale-110 active:scale-95 transition-all shadow-lg cursor-pointer"
-                  title="На весь экран"
-                >
-                  <Maximize2 size={16} className="drop-shadow-md" />
-                </button>
-              </div>
 
-              {/* Bottom Row: Like Button Only (Left) */}
-              {currentTrack && (
-                <div className="flex items-center">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLike(currentTrack);
-                      resetOverlayTimer();
-                    }}
-                    className="p-2 sm:p-2.5 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 text-white hover:scale-110 active:scale-95 transition-all shadow-lg cursor-pointer"
-                    title={isLiked(currentTrack.id) ? "Удалить из любимых" : "В любимые"}
-                  >
-                    <Heart size={18} fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} color={isLiked(currentTrack.id) ? "var(--accent)" : "white"} />
-                  </button>
-                </div>
-              )}
+            {/* Hover Fullscreen overlay */}
+            <div 
+              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer backdrop-blur-sm"
+              onClick={() => usePlayerStore.getState().toggleFullscreen()}
+              title="Развернуть текст"
+            >
+              <Maximize2 size={32} className="text-white drop-shadow-lg transition-transform hover:scale-110 lg:w-10 lg:h-10" />
             </div>
+
+            {/* Floating Heart Button at bottom-left corner of cover */}
+            {currentTrack && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleLike(currentTrack);
+                }}
+                className="absolute bottom-3 left-3 w-9 h-9 rounded-full bg-black/60 backdrop-blur-md border border-[var(--border-main)] hover:border-white/30 flex items-center justify-center transition-all hover:scale-110 hover:bg-black/80 shadow-lg z-10 text-white"
+                title={isLiked(currentTrack.id) ? "Удалить из любимых" : "В любимые"}
+              >
+                <Heart 
+                  size={18} 
+                  fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} 
+                  color={isLiked(currentTrack.id) ? "var(--accent)" : "#ffffff"} 
+                />
+              </button>
+            )}
           </>
         ) : (
-          <div className="flex-1 h-full flex items-center justify-center text-[var(--text-secondary)] flex-col gap-3">
-            <ImageIcon size={40} className="opacity-25" />
+          <div className="flex-1 h-full flex items-center justify-center text-[var(--text-secondary)] flex-col gap-4">
+            <ImageIcon size={48} className="opacity-20" />
             <div className="text-center">
-              <p className="text-xs font-medium">Очередь пуста</p>
+              <p>Очередь пуста</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Controls */}
-      <div className="flex-1 w-full flex flex-col justify-center min-w-0 pr-0 md:pr-4 lg:pr-6">
+      {/* Controls & Track Details - Right */}
+      <div className="flex-1 w-full flex flex-col justify-center min-w-0 pr-0 lg:pr-4">
         {/* Title and Artist */}
-        <div className="flex flex-col gap-0.5 mb-2 sm:mb-4 lg:mb-5 text-center">
-          <h1 className="text-[var(--text-main)] text-base sm:text-xl md:text-2xl lg:text-3xl font-bold truncate tracking-tight px-2 pb-0.5 leading-snug transition-all duration-300 drop-shadow-md track-title">
+        <div className="flex flex-col items-center justify-center text-center mb-5">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-wide uppercase text-white drop-shadow-md truncate max-w-full px-4">
             {currentTrack ? currentTrack.title : 'Не воспроизводится'}
           </h1>
-          <div className="text-[var(--text-secondary)] text-xs sm:text-sm md:text-base font-medium truncate transition-all duration-300 drop-shadow-sm flex items-center justify-center">
+          <div className="text-sm sm:text-base text-[#888] font-medium tracking-wide mt-1 uppercase truncate max-w-full">
             {currentTrack ? (
-              <ArtistLinks artist={currentTrack.artist} viewMode="modal" />
+              <ArtistLinks artist={currentTrack.artist} viewMode="modal" linkClassName="hover:text-white transition-colors" />
             ) : null}
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full flex flex-col gap-1 sm:gap-1.5 mb-2.5 sm:mb-4 lg:mb-5">
-          <div className="flex items-center justify-between text-[11px] sm:text-xs text-[var(--text-secondary)] font-medium px-1">
+        {/* Progress Bar with timestamps below */}
+        <div className="w-full flex flex-col gap-1.5 mb-5 px-1">
+          <div className="relative w-full flex items-center group">
+            <input 
+              type="range"
+              min="0"
+              max={currentTrack?.duration || 100}
+              step="0.5"
+              value={progress || 0}
+              onChange={(e) => setProgress(parseFloat(e.target.value))}
+              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-0 [&::-webkit-slider-thumb]:opacity-0 [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-0 [&::-moz-range-thumb]:opacity-0 [&::-moz-range-thumb]:border-0"
+              style={{
+                background: `linear-gradient(to right, var(--accent) ${((progress || 0) / (currentTrack?.duration || 100)) * 100}%, rgba(255,255,255,0.1) ${((progress || 0) / (currentTrack?.duration || 100)) * 100}%)`
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-[#666] font-mono px-0.5">
             <span>
-              {Math.floor((activeProgress || 0) / 60)}:{Math.floor((activeProgress || 0) % 60).toString().padStart(2, '0')}
+              {Math.floor((progress || 0) / 60)}:{Math.floor((progress || 0) % 60).toString().padStart(2, '0')}
             </span>
             <span>
               {currentTrack ? `${Math.floor(Math.round(currentTrack.duration) / 60)}:${(Math.round(currentTrack.duration) % 60).toString().padStart(2, '0')}` : '0:00'}
             </span>
           </div>
-          <input 
-            type="range"
-            min="0"
-            max={currentTrack?.duration || 100}
-            step="1"
-            value={activeProgress || 0}
-            onChange={(e) => setScrubbingProgress(parseFloat(e.target.value))}
-            onPointerUp={(e) => {
-              const val = parseFloat((e.target as HTMLInputElement).value);
-              setProgress(val);
-              setScrubbingProgress(null);
-            }}
-            onTouchEnd={(e) => {
-              const val = parseFloat((e.target as HTMLInputElement).value);
-              setProgress(val);
-              setScrubbingProgress(null);
-            }}
-            onMouseUp={(e) => {
-              const val = parseFloat((e.target as HTMLInputElement).value);
-              setProgress(val);
-              setScrubbingProgress(null);
-            }}
-            className="w-full h-[4px] lg:h-[5px] bg-[var(--bg-surface-hover)] rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 lg:[&::-webkit-slider-thumb]:w-4 lg:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-            style={{
-              background: `linear-gradient(to right, white ${((activeProgress || 0) / (currentTrack?.duration || 100)) * 100}%, #2a2a2a ${((activeProgress || 0) / (currentTrack?.duration || 100)) * 100}%)`
-            }}
-          />
         </div>
 
-        {/* Playback Controls Row */}
-        <div className="w-full flex items-center justify-center mb-2.5 sm:mb-4 lg:mb-5">
-          <div className="flex items-center justify-center gap-5 sm:gap-7 lg:gap-8">
+        {/* Playback Controls Row (Ultra-thin theme-matching border) */}
+        <div className="w-full bg-transparent border border-white/[0.05] rounded-2xl py-2.5 px-4 flex items-center justify-between mb-4 shadow-sm">
+          {/* Options MoreVertical on far left */}
+          <div className="flex items-center">
+            {currentTrack ? (
+              <TrackOptionsPopover 
+                track={currentTrack} 
+                icon={<MoreVertical size={20} className="text-[#777] hover:text-white transition-colors" />} 
+                className="p-1 text-[#777] hover:text-white transition-colors"
+              />
+            ) : (
+              <div className="w-5" />
+            )}
+          </div>
+
+          {/* Center Playback Controls */}
+          <div className="flex items-center gap-6 sm:gap-8">
             <button 
-              onClick={toggleRepeat}
-              className={`p-1.5 transition-colors relative cursor-pointer ${repeatMode !== 'off' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
-              title="Режим повтора"
+              onClick={toggleRepeat} 
+              className={`transition-colors relative ${repeatMode !== 'off' ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+              title="Повтор"
             >
-              <Repeat size={18} strokeWidth={2} />
+              <Repeat size={19} strokeWidth={2} />
               {repeatMode === 'one' && (
-                <span className="absolute -top-1 -right-1 text-[9px] font-bold bg-[var(--accent)] text-white w-3.5 h-3.5 rounded-full flex items-center justify-center">1</span>
+                <span className="absolute -top-2 -right-2 text-[9px] font-bold text-[var(--accent)]">1</span>
               )}
             </button>
+
             <button 
-              onClick={prevTrack}
-              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-95 transition-all cursor-pointer"
+              onClick={prevTrack} 
+              className="text-[#777] hover:text-white transition-colors p-1"
               title="Предыдущий трек"
             >
-              <SkipBack size={22} strokeWidth={1.75} />
+              <SkipBack size={22} strokeWidth={1.8} />
             </button>
-            
+
             <button 
               onClick={togglePlayPause}
-              className="w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-[var(--text-main)] text-[var(--bg-main)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-lg shadow-black/40 cursor-pointer shrink-0"
+              className="text-white hover:scale-105 transition-transform flex items-center justify-center p-1"
               title={isPlaying ? "Пауза" : "Воспроизведение"}
             >
               {isPlaying ? (
-                <Pause size={24} strokeWidth={2.5} />
+                <Pause size={28} strokeWidth={1.8} />
               ) : (
-                <Play size={24} strokeWidth={2.5} className="ml-0.5" />
+                <Play size={28} strokeWidth={1.8} className="ml-0.5" />
               )}
             </button>
-            
+
             <button 
-              onClick={() => nextTrack(false)}
-              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-95 transition-all cursor-pointer"
+              onClick={() => nextTrack(false)} 
+              className="text-[#777] hover:text-white transition-colors p-1"
               title="Следующий трек"
             >
-              <SkipForward size={22} strokeWidth={1.75} />
+              <SkipForward size={22} strokeWidth={1.8} />
             </button>
+
             <button 
-              onClick={toggleShuffle}
-              className={`p-1.5 transition-colors cursor-pointer ${isShuffle ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
+              onClick={toggleShuffle} 
+              className={`transition-colors ${isShuffle ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
               title="Случайный порядок"
             >
-              <Shuffle size={18} strokeWidth={2} />
-            </button>
-            <button
-              onClick={() => document.dispatchEvent(new CustomEvent('toggle-eq'))}
-              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-95 transition-all cursor-pointer"
-              data-tooltip="Эквалайзер"
-              data-tooltip-pos="bottom"
-              title="Эквалайзер"
-            >
-              <SlidersHorizontal size={18} strokeWidth={1.75} />
+              <Shuffle size={19} strokeWidth={2} />
             </button>
           </div>
+
+          {/* ThumbsDown Dislike on far right */}
+          <button 
+            onClick={() => nextTrack(false)}
+            className="text-[#777] hover:text-[var(--accent)] transition-colors p-1"
+            title="Не нравится (следующий трек)"
+          >
+            <ThumbsDown size={19} strokeWidth={1.8} />
+          </button>
         </div>
 
-        {/* Volume Mixer - Hidden on mobile/iOS where hardware buttons control audio */}
-        <div className="hidden md:flex items-center gap-2.5 sm:gap-3 w-full max-w-sm sm:max-w-md mx-auto md:mx-0 mt-0.5 md:mt-2">
-          {/* Volume Control */}
-          <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-full flex items-center px-3 sm:px-3.5 py-1.5 sm:py-2 gap-2 sm:gap-2.5 shadow-sm transition-all duration-300">
-            <button
-              onClick={toggleMute}
-              className="text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-90 transition-transform shrink-0 cursor-pointer p-0.5"
-              title={volume === 0 ? "Включить звук" : "Выключить звук"}
-            >
-              {volume === 0 ? (
-                <VolumeX size={17} strokeWidth={1.75} className="text-red-400" />
-              ) : (
-                <Volume2 size={17} strokeWidth={1.75} />
-              )}
-            </button>
+        {/* Bottom Row: Volume Slider & Equalizer Button */}
+        <div className="w-full flex items-center justify-between gap-4">
+          {/* Volume on left (responsive full width) */}
+          <div className="flex-1 flex items-center gap-3 bg-transparent border border-white/[0.05] rounded-full px-4 py-2 shadow-sm">
+            <Volume2 size={16} className="text-[#777] shrink-0" />
             <input 
               type="range"
               min="0"
               max="1"
               step="0.01"
               value={volume}
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="flex-1 h-[5px] bg-[var(--bg-surface-hover)] rounded-full appearance-none outline-none cursor-pointer touch-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4.5 [&::-webkit-slider-thumb]:h-4.5 md:[&::-webkit-slider-thumb]:w-3.5 md:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+              onChange={(e) => {
+                setVolume(parseFloat(e.target.value));
+                if (volumeInputText !== null) setVolumeInputText(null);
+              }}
+              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-0 [&::-webkit-slider-thumb]:opacity-0 [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-0 [&::-moz-range-thumb]:opacity-0 [&::-moz-range-thumb]:border-0"
               style={{
-                background: `linear-gradient(to right, white ${volume * 100}%, #2a2a2a ${volume * 100}%)`
+                background: `linear-gradient(to right, var(--accent) ${volume * 100}%, rgba(255,255,255,0.1) ${volume * 100}%)`
               }}
             />
-            <input 
-              id="vol-input"
-              type="text"
-              value={volInput}
-              onChange={handleVolInputChange}
-              onBlur={() => setVolInput(Math.round(volume * 100).toString())}
-              className="w-8 h-6 rounded-md bg-transparent border-0 flex items-center justify-center text-[11px] text-[var(--text-secondary)] font-bold shrink-0 text-center outline-none focus:text-[var(--text-main)] transition-colors"
-            />
+            <div className="flex items-center justify-center shrink-0 select-none">
+              <input 
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={volumeInputText !== null ? volumeInputText : Math.round(volume * 100)}
+                onFocus={() => setVolumeInputText(Math.round(volume * 100).toString())}
+                onBlur={() => {
+                  if (volumeInputText !== null) {
+                    const val = parseInt(volumeInputText, 10);
+                    if (!isNaN(val)) {
+                      setVolume(Math.min(100, Math.max(0, val)) / 100);
+                    }
+                    setVolumeInputText(null);
+                  }
+                }}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  if (raw === '') {
+                    setVolumeInputText('');
+                    return;
+                  }
+                  const val = parseInt(raw, 10);
+                  const clamped = Math.min(100, Math.max(0, val));
+                  setVolumeInputText(clamped.toString());
+                  setVolume(clamped / 100);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                onWheel={(e) => {
+                  e.preventDefault();
+                  const delta = e.deltaY < 0 ? 0.02 : -0.02;
+                  const newVol = Math.min(1, Math.max(0, parseFloat((volume + delta).toFixed(2))));
+                  setVolume(newVol);
+                  setVolumeInputText(Math.round(newVol * 100).toString());
+                }}
+                className="w-6 text-center bg-transparent text-xs font-mono font-semibold text-[var(--text-main)] outline-none border-b border-transparent focus:border-[var(--accent)] hover:text-[var(--accent)] transition-colors p-0 leading-none"
+                title="Громкость (0-100)"
+              />
+            </div>
+          </div>
+
+          {/* Equalizer button on right with Popover shutter directly above it */}
+          <div className="relative shrink-0">
+            <button 
+              ref={eqButtonRef}
+              data-eq-trigger="true"
+              onClick={() => setIsEqOpen(prev => !prev)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all shadow-sm ${
+                isEqOpen 
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]' 
+                  : 'border-white/[0.05] hover:border-white/20 text-[var(--accent)] hover:scale-105 hover:bg-white/5'
+              }`}
+              title="Эквалайзер"
+            >
+              <SlidersHorizontal size={19} strokeWidth={2} />
+            </button>
+            <AnimatePresence>
+              {isEqOpen && (
+                <EqualizerPopover triggerRef={eqButtonRef} onClose={() => setIsEqOpen(false)} />
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

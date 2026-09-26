@@ -3,12 +3,13 @@ import { usePlayerStore, useSettingsStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useModalStore } from '../store/useModalStore';
 import { useArtistStore } from '../store/useArtistStore';
-import { Play, Search, Loader2, Disc3, ListMusic, Music, Settings, Cloud, X, Heart, Plus, User, ChevronRight, Sparkles } from 'lucide-react';
+import { Play, Search, Loader2, Disc3, ListMusic, Music, Settings, X, Heart, Plus, User, ChevronRight, Sparkles } from 'lucide-react';
 import { PlaylistPopover } from './PlaylistPopover';
 import { TrackOptionsPopover } from './TrackOptionsPopover';
 import { PlayingIndicator } from './PlayingIndicator';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { getAccountSeedTracks, analyzePlaybackHistory } from '../services/WaveRecommendationService';
 
 type SearchType = 'track' | 'album' | 'playlist' | 'artist';
 
@@ -72,7 +73,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  const { queue, addTrack, playTrack, playContext, currentTrackIndex, isPlaying, togglePlayPause } = usePlayerStore();
+  const { queue, addTrack, playTrack, playContext, currentTrackIndex, isPlaying, togglePlayPause, history: playerHistory } = usePlayerStore();
   const yaToken = useSettingsStore(state => state.yandexToken);
   const { likedTracks, toggleLike } = useCollectionStore();
   const { openAlert, openCreatePlaylist } = useModalStore();
@@ -330,58 +331,107 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
       try {
         let tracks: any[] = [];
         
-        // Попытка 1: Настоящие рекомендации (Плейлист дня)
+        // 1. Приоритет: Рекомендации на основе глубокого анализа прослушанных треков и аккаунта
         try {
-          const res1 = await invoke<string>('yandex_api_request', {
-            url: 'https://api.music.yandex.net/landing3?blocks=personalplaylists',
-            token: yaToken
-          });
-          const data1 = JSON.parse(res1);
-          
-          let targetUid = null;
-          let targetKind = null;
-          
-          const blocks = data1.result?.blocks || [];
-          for (const block of blocks) {
-            if (block.entities) {
-              for (const entity of block.entities) {
-                 const plData = entity.data?.data || entity.data;
-                 if (plData && plData.uid && plData.kind) {
-                   if (entity.id === 'playlistOfTheDay' || plData.generatedPlaylistType === 'playlistOfTheDay') {
-                     targetUid = plData.uid;
-                     targetKind = plData.kind;
-                     break;
-                   }
-                   if (!targetUid) {
-                     targetUid = plData.uid;
-                     targetKind = plData.kind;
-                   }
-                 }
+          const accountSeeds = getAccountSeedTracks();
+          const profile = analyzePlaybackHistory(playerHistory && playerHistory.length > 0 ? playerHistory : accountSeeds);
+
+          // Ищем похожие треки на основе последних прослушанных треков пользователя
+          if (profile.seedYandexTrackIds.length > 0) {
+            const recentTrackIds = profile.seedYandexTrackIds.slice(0, 3);
+            for (const seedId of recentTrackIds) {
+              try {
+                const simRes = await invoke<string>('yandex_api_request', {
+                  url: `https://api.music.yandex.net/tracks/${seedId}/similar`,
+                  token: yaToken
+                });
+                const simData = JSON.parse(simRes);
+                const simTracks = simData.result?.similarTracks || [];
+                if (simTracks.length > 0) {
+                  tracks.push(...simTracks.slice(0, 8));
+                }
+              } catch (err) {
+                console.warn('Failed to fetch similar for seed', seedId, err);
               }
+              if (tracks.length >= 20) break;
             }
           }
-          
-          if (targetUid && targetKind) {
-             const res2 = await invoke<string>('yandex_api_request', {
-               url: `https://api.music.yandex.net/users/${targetUid}/playlists/${targetKind}`,
-               token: yaToken
-             });
-             const data2 = JSON.parse(res2);
-               if (data2.result?.tracks) {
-                  tracks = data2.result.tracks.map((t: any) => t.track || t);
-               }
+
+          // Если треков мало, дополняем треками любимых / проанализированных артистов
+          if (tracks.length < 10 && profile.seedArtists.length > 0) {
+            for (const artistName of profile.seedArtists.slice(0, 3)) {
+              try {
+                const artistRes = await invoke<string>('yandex_api_request', {
+                  url: `https://api.music.yandex.net/search?text=${encodeURIComponent(artistName)}&type=track&page=0`,
+                  token: yaToken
+                });
+                const artistData = JSON.parse(artistRes);
+                const found = artistData.result?.tracks?.results || [];
+                if (found.length > 0) {
+                  tracks.push(...found.slice(0, 6));
+                }
+              } catch (e) {}
+              if (tracks.length >= 20) break;
+            }
           }
-        } catch (e) {
-          console.error("Failed to fetch personalplaylists", e);
+        } catch (analysisErr) {
+          console.warn('Playback history analysis error:', analysisErr);
         }
 
-        // Попытка 2: Берем любимые треки пользователя и перемешиваем (если Плейлист дня не загрузился)
+        // 2. Персональные плейлисты (Плейлист дня) если еще мало треков
+        if (tracks.length === 0) {
+          try {
+            const res1 = await invoke<string>('yandex_api_request', {
+              url: 'https://api.music.yandex.net/landing3?blocks=personalplaylists',
+              token: yaToken
+            });
+            const data1 = JSON.parse(res1);
+            
+            let targetUid = null;
+            let targetKind = null;
+            
+            const blocks = data1.result?.blocks || [];
+            for (const block of blocks) {
+              if (block.entities) {
+                for (const entity of block.entities) {
+                   const plData = entity.data?.data || entity.data;
+                   if (plData && plData.uid && plData.kind) {
+                     if (entity.id === 'playlistOfTheDay' || plData.generatedPlaylistType === 'playlistOfTheDay') {
+                       targetUid = plData.uid;
+                       targetKind = plData.kind;
+                       break;
+                     }
+                     if (!targetUid) {
+                       targetUid = plData.uid;
+                       targetKind = plData.kind;
+                     }
+                   }
+                }
+              }
+            }
+            
+            if (targetUid && targetKind) {
+               const res2 = await invoke<string>('yandex_api_request', {
+                 url: `https://api.music.yandex.net/users/${targetUid}/playlists/${targetKind}`,
+                 token: yaToken
+               });
+               const data2 = JSON.parse(res2);
+                 if (data2.result?.tracks) {
+                    tracks = data2.result.tracks.map((t: any) => t.track || t);
+                 }
+            }
+          } catch (e) {
+            console.error("Failed to fetch personalplaylists", e);
+          }
+        }
+
+        // 3. Берем любимые треки пользователя и перемешиваем
         if (tracks.length === 0 && likedTracks && likedTracks.length > 0) {
           const shuffled = [...likedTracks].sort(() => 0.5 - Math.random());
           tracks = shuffled.slice(0, 20);
         }
         
-        // Попытка 3: Чарт (Топ 100)
+        // 4. Чарт (Топ 100)
         if (tracks.length === 0) {
           try {
             const res = await invoke<string>('yandex_api_request', {
@@ -396,7 +446,14 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
         }
         
         if (tracks.length > 0) {
-          setRecommendations(tracks.map(t => (t.id && String(t.id).startsWith('ya_')) ? t : mapYandexTrack(t)));
+          const mapped = tracks.map(t => (t.id && String(t.id).startsWith('ya_')) ? t : mapYandexTrack(t));
+          const uniqueMap = new Map<string, any>();
+          for (const item of mapped) {
+            if (item && item.id && !uniqueMap.has(item.id)) {
+              uniqueMap.set(item.id, item);
+            }
+          }
+          setRecommendations(Array.from(uniqueMap.values()).slice(0, 25));
         }
       } catch (e: any) {
         console.error('Failed to fetch recommendations', e);
@@ -404,7 +461,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
     };
     
     fetchRecommendations();
-  }, [yaToken, likedTracks]);
+  }, [yaToken, likedTracks, playerHistory?.length, playerHistory?.[0]?.id]);
 
   const handlePlayResult = async (result: any) => {
     if (result.type === 'track') {
@@ -510,7 +567,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
         </p>
         <button 
           onClick={onOpenSettings}
-          className="flex items-center gap-2 px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] rounded-[3px] text-[var(--text-main)] font-bold text-sm transition-colors"
+          className="flex items-center gap-2 px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] rounded-[3px] text-[var(--accent-contrast)] font-bold text-sm transition-colors"
         >
           <Settings size={18} /> Открыть Настройки
         </button>
@@ -521,7 +578,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
   const isHomeState = !hasSearched && !isSearching && results.length === 0;
 
   return (
-    <div className={`w-full mx-auto h-full flex flex-col overflow-x-hidden transition-all duration-500 ease-in-out ${isHomeState ? 'justify-center max-w-2xl' : 'pt-4 w-full'}`}>
+    <div className={`w-full mx-auto h-full flex flex-col transition-all duration-500 ease-in-out ${isHomeState ? 'justify-center max-w-2xl' : 'pt-4 w-full'}`}>
       
       <div className={`relative z-50 flex flex-col gap-4 shrink-0 transition-all duration-500 ease-in-out ${isHomeState ? 'mb-0' : 'mb-6'}`}>
         <form onSubmit={handleSearch} className="relative w-full group z-50">
@@ -542,9 +599,9 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setTimeout(() => setIsInputFocused(false), 200)}
             placeholder="Трек, альбом, исполнитель, подкаст"
-            className={`w-full bg-[var(--bg-surface)] border border-[var(--border-main)] py-3.5 pl-12 pr-20 text-[var(--text-main)] text-[15px] placeholder:text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent)] transition-all duration-300 shadow-sm ${isInputFocused && searchHistory.length > 0 ? 'rounded-t-[16px] rounded-b-none border-b-transparent' : 'rounded-[16px]'}`}
+            className={`w-full bg-[#121216]/90 backdrop-blur-xl border border-white/[0.08] py-4 pl-14 pr-24 text-[var(--text-main)] text-[15px] placeholder:text-white/40 focus:outline-none focus:border-[var(--accent)]/80 focus:ring-1 focus:ring-[var(--accent)]/30 transition-all duration-300 shadow-xl ${isInputFocused && searchHistory.length > 0 ? 'rounded-t-[22px] rounded-b-none border-b-transparent' : 'rounded-[22px]'}`}
           />
-          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#555] group-focus-within:text-[var(--text-secondary)] transition-colors" />
+          <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-white transition-colors" />
           
           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
             {query.trim() && (
@@ -558,7 +615,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                   setSearchNotice(null);
                   setErrorMsg('');
                 }}
-                className="p-1 hover:bg-[var(--bg-surface-hover)] rounded-full text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-colors"
+                className="p-1.5 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer"
                 title="Очистить"
               >
                 <X size={15} />
@@ -567,12 +624,12 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
             <button 
               type="submit"
               disabled={isSearching}
-              className="flex items-center justify-center transition-opacity hover:opacity-80 disabled:opacity-50"
+              className="flex items-center justify-center p-2 rounded-full hover:bg-white/10 transition-all disabled:opacity-50 cursor-pointer"
             >
               {isSearching && !loadingCollection ? (
                 <Loader2 size={18} className="animate-spin text-[var(--accent)]" />
               ) : (
-                <Cloud size={18} className="text-[var(--accent)]" />
+                <Search size={18} className="text-[var(--accent)]" />
               )}
             </button>
           </div>
@@ -584,12 +641,12 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -5 }}
                 transition={{ duration: 0.2 }}
-                className="absolute top-full left-0 right-0 bg-[var(--bg-surface)] border border-[var(--border-main)] border-t-0 rounded-b-[16px] overflow-hidden shadow-2xl py-2 z-50"
+                className="absolute top-full left-0 right-0 bg-[#121216]/98 backdrop-blur-2xl border border-white/[0.08] border-t-0 rounded-b-[22px] overflow-hidden shadow-2xl py-2 z-50"
               >
                 {searchHistory.map((item, i) => (
                   <div 
                     key={i} 
-                    className="flex items-center justify-between px-4 py-2.5 hover:bg-[var(--bg-surface-hover)] cursor-pointer text-[#aaa] hover:text-[var(--text-main)] transition-colors"
+                    className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.06] cursor-pointer text-white/70 hover:text-white transition-colors"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       setQuery(item);
@@ -597,7 +654,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                     }}
                   >
                     <div className="flex items-center gap-3">
-                      <Search size={16} className="text-[#555]" />
+                      <Search size={15} className="text-white/40" />
                       <span className="text-[14px]">{item}</span>
                     </div>
                     <button 
@@ -606,7 +663,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                         e.preventDefault();
                         removeHistoryItem(item, e);
                       }}
-                      className="p-1 hover:bg-[var(--bg-surface-hover)] rounded-full text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-colors"
+                      className="p-1 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-colors"
                     >
                       <X size={14} />
                     </button>
@@ -617,31 +674,28 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
           </AnimatePresence>
         </form>
 
-        <div className={`flex items-center gap-2 overflow-x-auto scrollbar-hide py-1 px-1 justify-start sm:justify-center transition-opacity duration-500 ${isHomeState && !query.trim() ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
-          <button 
-            onClick={() => setSearchType('track')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${searchType === 'track' ? 'bg-[var(--accent)] text-[var(--text-main)]' : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
-          >
-            <Music size={14} /> Треки
-          </button>
-          <button 
-            onClick={() => setSearchType('album')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${searchType === 'album' ? 'bg-[var(--accent)] text-[var(--text-main)]' : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
-          >
-            <Disc3 size={14} /> Альбомы
-          </button>
-          <button 
-            onClick={() => setSearchType('playlist')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${searchType === 'playlist' ? 'bg-[var(--accent)] text-[var(--text-main)]' : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
-          >
-            <ListMusic size={14} /> Плейлисты
-          </button>
-          <button 
-            onClick={() => setSearchType('artist')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${searchType === 'artist' ? 'bg-[var(--accent)] text-[var(--text-main)]' : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
-          >
-            <User size={14} /> Артисты
-          </button>
+        <div className={`flex items-center gap-2 justify-center transition-opacity duration-500 ${isHomeState && !query.trim() ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
+          {[
+            { type: 'track' as SearchType, label: 'Треки', icon: <Music size={13} /> },
+            { type: 'album' as SearchType, label: 'Альбомы', icon: <Disc3 size={13} /> },
+            { type: 'playlist' as SearchType, label: 'Плейлисты', icon: <ListMusic size={13} /> },
+            { type: 'artist' as SearchType, label: 'Артисты', icon: <User size={13} /> }
+          ].map(tab => {
+            const isActive = searchType === tab.type;
+            return (
+              <button 
+                key={tab.type}
+                onClick={() => setSearchType(tab.type)}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  isActive 
+                    ? 'bg-white text-black shadow-md scale-102 hover:bg-white/95' 
+                    : 'bg-white/[0.05] hover:bg-white/[0.1] text-white/70 hover:text-white border border-white/[0.08]'
+                }`}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -682,8 +736,8 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                     {isQueuedAndActive ? (
                       <PlayingIndicator isPaused={!isPlaying} />
                     ) : (
-                      <div className="w-10 h-10 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                        <Play size={18} fill="currentColor" className="text-[var(--text-main)] ml-0.5" />
+                      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-xl transform group-hover:scale-110 transition-transform">
+                        <Play size={18} fill="#000000" className="text-black ml-0.5" />
                       </div>
                     )}
                   </div>
@@ -706,7 +760,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
         </div>
       </div>
 
-      <div className={`relative z-0 flex flex-col flex-1 overflow-y-auto overflow-x-hidden w-full min-w-0 scrollbar-hide pb-24 transition-opacity duration-500 ${isHomeState ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto'}`}>
+      <div className={`relative z-0 flex flex-col flex-1 overflow-y-auto scrollbar-hide pb-24 transition-opacity duration-500 ${isHomeState ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto'}`}>
         {errorMsg && (
           <div className="text-red-500 text-center py-4 bg-red-500/10 rounded-2xl border border-red-500/20 mb-4">{errorMsg}</div>
         )}
@@ -720,7 +774,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
             {searchNotice.onAction && searchNotice.actionText && (
               <button 
                 onClick={searchNotice.onAction}
-                className="shrink-0 flex items-center gap-1 px-3 py-1 bg-[var(--accent)] text-[var(--text-main)] hover:bg-[var(--accent-hover)] rounded-full text-xs font-semibold transition-colors shadow-sm"
+                className="shrink-0 flex items-center gap-1 px-3 py-1 bg-[var(--accent)] text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)] rounded-full text-xs font-semibold transition-colors shadow-sm"
               >
                 <span>{searchNotice.actionText}</span>
                 <ChevronRight size={12} />
@@ -760,17 +814,20 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
             
             return (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18 }}
                 key={result.id}
                 onClick={() => handlePlayResult(result)}
-                className={`group flex items-center justify-between p-2.5 pr-3 mb-2 rounded-2xl border border-[var(--border-main)] cursor-pointer transition-all w-full min-w-0 box-border ${
-                  isQueuedAndActive ? 'bg-[var(--bg-surface-hover)] border-[var(--border-main)]' : 'bg-transparent hover:bg-[var(--bg-surface-hover)]'
+                className={`group flex items-center justify-between p-2.5 pr-4 mb-2 rounded-[18px] border cursor-pointer transition-all duration-200 select-none ${
+                  isQueuedAndActive 
+                    ? 'bg-white/[0.08] border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30' 
+                    : 'bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.05] hover:border-white/[0.12]'
                 }`}
               >
-                <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                  <div className={`relative w-12 h-12 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] ${
-                    isArtist ? 'rounded-full border border-white/10' : isTrack ? 'rounded-[10px]' : 'rounded-md shadow-md'
+                <div className="flex items-center gap-4 flex-1">
+                  <div className={`relative w-12 h-12 overflow-hidden shrink-0 bg-black/40 shadow-sm ${
+                    isArtist ? 'rounded-full border border-white/10' : 'rounded-[14px]'
                   }`}>
                     {result.cover ? (
                       <img src={coverUrl} alt={result.title} className="w-full h-full object-cover" />
@@ -789,18 +846,18 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                     >
                       {isCollectionLoading ? (
                         <div className="w-8 h-8 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md">
-                          <Loader2 size={14} className="text-[var(--text-main)] animate-spin" />
+                          <Loader2 size={14} className="text-[var(--accent-contrast)] animate-spin" />
                         </div>
                       ) : isQueuedAndActive ? (
                         <PlayingIndicator isPaused={!isPlaying} />
                       ) : (
                         <div className="w-8 h-8 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md">
-                          <Play size={14} fill="currentColor" className="text-[var(--text-main)] ml-0.5" />
+                          <Play size={14} fill="currentColor" className="text-[var(--accent-contrast)] ml-0.5" />
                         </div>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex flex-col truncate">
                     <span className={`font-medium text-[15px] truncate ${isQueuedAndActive ? 'text-[var(--accent)]' : 'text-[#cccccc] group-hover:text-[var(--text-main)]'}`}>
                       {result.title}
                     </span>
@@ -811,11 +868,11 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                           useArtistStore.getState().openArtist(result.author, null, 'modal');
                         }
                       }}
-                      className={`text-[12px] text-[var(--text-secondary)] truncate ${!isArtist ? 'hover:text-[var(--text-main)] hover:underline cursor-pointer' : ''} transition-colors`}
+                      className={`text-[13px] text-[var(--text-secondary)] truncate ${!isArtist ? 'hover:text-[var(--text-main)] hover:underline cursor-pointer' : ''} transition-colors`}
                     >
                       {isArtist ? (
                         <>
-                          {result.author || 'Исполнитель'}
+                          {result.author}
                           {result.trackCount > 0 && ` • ${result.trackCount} треков`}
                           {result.albumCount > 0 && ` • ${result.albumCount} релизов`}
                         </>
@@ -829,13 +886,13 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 </div>
 
                 {isArtist && (
-                  <div className="flex items-center shrink-0 ml-2">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         useArtistStore.getState().openArtist(result.title, result.id, 'modal');
                       }}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-surface-hover)] border border-[var(--border-main)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all shadow-sm group/btn shrink-0 whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-surface-hover)] border border-[var(--border-main)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all shadow-sm group/btn"
                     >
                       <span>Карточка артиста</span>
                       <ChevronRight size={13} className="text-[var(--text-secondary)] group-hover/btn:text-[var(--accent)] group-hover/btn:translate-x-0.5 transition-transform" />
@@ -891,8 +948,26 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                   )}
 
                   {isTrack && (
-                    <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <TrackOptionsPopover track={mapYandexTrack({id: result.id, title: result.title, artists: [{ name: result.author }], durationMs: result.lengthSeconds * 1000, coverUri: result.cover ? result.cover.replace('https://', '').replace('200x200', '%%') : ''})} /> <PlaylistPopover 
+                    <div className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <TrackOptionsPopover track={mapYandexTrack({id: result.id, title: result.title, artists: [{ name: result.author }], durationMs: result.lengthSeconds * 1000, coverUri: result.cover ? result.cover.replace('https://', '').replace('200x200', '%%') : ''})} /> 
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const t = mapYandexTrack({
+                            id: result.id,
+                            title: result.title,
+                            artists: [{ name: result.author }],
+                            durationMs: result.lengthSeconds * 1000,
+                            coverUri: result.cover ? result.cover.replace('https://', '').replace('200x200', '%%') : ''
+                          });
+                          toggleLike(t);
+                        }}
+                        className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${likedTracks.some(lt => lt.id === `ya_${result.id}`) ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                        title={likedTracks.some(lt => lt.id === `ya_${result.id}`) ? "Убрать из любимых" : "В любимые"}
+                      >
+                        <Heart size={16} strokeWidth={1.7} fill={likedTracks.some(lt => lt.id === `ya_${result.id}`) ? "currentColor" : "none"} />
+                      </button>
+                      <PlaylistPopover 
                         track={mapYandexTrack({
                             id: result.id,
                             title: result.title,
@@ -901,23 +976,6 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                             coverUri: result.cover ? result.cover.replace('https://', '').replace('200x200', '%%') : ''
                           })}
                       />
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                                                      const t = mapYandexTrack({
-                              id: result.id,
-                              title: result.title,
-                              artists: [{ name: result.author }],
-                              durationMs: result.lengthSeconds * 1000,
-                              coverUri: result.cover ? result.cover.replace('https://', '').replace('200x200', '%%') : ''
-                            });
-                          toggleLike(t);
-                        }}
-                        className={`p-1.5 rounded-sm transition-colors ${likedTracks.some(lt => lt.id === `ya_${result.id}`) ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
-                        title={likedTracks.some(lt => lt.id === `ya_${result.id}`) ? "Убрать из любимых" : "В любимые"}
-                      >
-                        <Heart size={16} fill={likedTracks.some(lt => lt.id === `ya_${result.id}`) ? "currentColor" : "none"} />
-                      </button>
                     </div>
                   )}
                 </motion.div>

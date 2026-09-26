@@ -407,10 +407,19 @@ export class AudioService {
       const multiplier = Math.pow(10, gainDb / 20);
       if (this.audioCtx && this.audioCtx.state === 'running') {
         this.gainNode.gain.setTargetAtTime(multiplier, this.audioCtx.currentTime, 0.03);
-      } else {
-        this.gainNode.gain.value = multiplier;
       }
     }
+  }
+
+  public stop() {
+    this.currentLoadId++;
+    try {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+      this.audio.src = '';
+    } catch {}
+    this.updateMediaSession(null, false);
+    pocketBaseService.updateDevicePresence(null, 0, false);
   }
 
   public resumeAudioContext() {

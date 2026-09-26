@@ -25,11 +25,14 @@ export interface PlayerState {
   repeatMode: 'off' | 'all' | 'one';
   isFullscreen: boolean;
   isMiniPlayer: boolean;
-  miniPlayerStyle: 'square' | 'rectangle';
+  miniPlayerStyle: 'square' | 'rectangle' | 'island';
   
   // History
   history: Track[];
   addToHistory: (track: Track) => void;
+  clearHistory: () => void;
+  isHistoryDrawerOpen: boolean;
+  setHistoryDrawerOpen: (open: boolean) => void;
 
   // EQ
   eqPreset: string;
@@ -38,8 +41,10 @@ export interface PlayerState {
   
   // Действия
   setQueue: (tracks: Track[]) => void;
+  clearQueue: () => void;
   playContext: (tracks: Track[], index: number) => void;
   addTrack: (track: Track) => void;
+  addTracks: (tracks: Track[]) => void;
   removeTrack: (trackId: string) => void;
   playTrack: (index: number) => void;
   togglePlayPause: () => void;
@@ -52,7 +57,7 @@ export interface PlayerState {
   toggleRepeat: () => void;
   toggleFullscreen: () => void;
   toggleMiniPlayer: () => void;
-  setMiniPlayerStyle: (style: 'square' | 'rectangle') => void;
+  setMiniPlayerStyle: (style: 'square' | 'rectangle' | 'island') => void;
   
   setEqPreset: (preset: string, bands: number[], preAmp: number) => void;
   setEqBand: (index: number, value: number) => void;

@@ -78,7 +78,7 @@ export const PlaylistChoiceModal: React.FC<PlaylistChoiceModalProps> = ({
               }}
               className="group flex items-start gap-4 p-4 rounded-2xl bg-[var(--bg-surface-hover)] hover:bg-[var(--border-main)]/50 border border-[var(--border-main)] transition-all text-left hover:scale-[1.01] relative overflow-hidden"
             >
-              <div className="w-12 h-12 rounded-2xl bg-[var(--accent)] text-[var(--text-main)] flex items-center justify-center shrink-0 shadow-lg group-hover:scale-110 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center shrink-0 shadow-lg group-hover:scale-110 transition-transform">
                 <DownloadCloud size={24} strokeWidth={2} />
               </div>
               <div className="flex flex-col flex-1">

@@ -1118,6 +1118,19 @@ async fn parse_external_playlist(url: String) -> Result<playlist_importer::Exter
     playlist_importer::parse_playlist_url(&url, proxy_url).await
 }
 
+#[tauri::command]
+fn set_minimize_to_tray(_enabled: bool) {}
+
+#[tauri::command]
+fn set_autostart(_enabled: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+fn get_autostart() -> Result<bool, String> {
+    Ok(false)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1153,7 +1166,10 @@ pub fn run() {
             remove_cached_track,
             get_cache_stats,
             clear_tracks_cache,
-            parse_external_playlist
+            parse_external_playlist,
+            set_minimize_to_tray,
+            set_autostart,
+            get_autostart
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

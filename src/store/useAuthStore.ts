@@ -4,7 +4,11 @@ export interface CloudUser {
   id: string;
   email: string;
   name?: string;
+  username?: string;
   avatar?: string;
+  banner?: string;
+  bio?: string;
+  status?: string;
 }
 
 interface AuthState {
@@ -20,6 +24,7 @@ interface AuthState {
   closeAuthModal: () => void;
   skipAuthModal: () => void;
   setUser: (user: CloudUser | null) => void;
+  updateUser: (fields: Partial<CloudUser>) => void;
   setToken: (token: string | null) => void;
   setServerUrl: (url: string) => void;
   setSyncing: (isSyncing: boolean) => void;
@@ -63,6 +68,22 @@ export const useAuthStore = create<AuthState>((set) => {
         localStorage.removeItem('aura_pb_user');
       }
       set({ user, isAuthModalOpen: false });
+    },
+
+    updateUser: (fields) => {
+      set((state) => {
+        const cleaned: Partial<CloudUser> = {};
+        for (const [k, v] of Object.entries(fields)) {
+          if (v !== undefined) {
+            (cleaned as any)[k] = v;
+          }
+        }
+        const updated = state.user 
+          ? { ...state.user, ...cleaned }
+          : { id: 'local-user', email: 'user@aura.app', name: 'User', username: 'user', ...cleaned };
+        localStorage.setItem('aura_pb_user', JSON.stringify(updated));
+        return { user: updated as CloudUser };
+      });
     },
 
     setToken: (token) => {

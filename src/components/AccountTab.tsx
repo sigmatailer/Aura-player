@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Lock, Mail, RefreshCw, Smartphone, Monitor, 
-  LogOut, Radio, 
+  LogOut, Radio, Play,
   AlertCircle, ShieldCheck, Sparkles 
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
@@ -31,8 +31,14 @@ export const AccountTab: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 8000);
-    return () => clearInterval(interval);
+    const unsub = pocketBaseService.onDevicesChanged(() => {
+      loadData();
+    });
+    const interval = setInterval(loadData, 5000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, [user]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -303,37 +309,57 @@ export const AccountTab: React.FC = () => {
 
         <div className="space-y-2.5">
           {activeDevices.length > 0 ? (
-            activeDevices.map((dev, idx) => (
-              <div
-                key={idx}
-                className="p-3 sm:p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between gap-3 sm:gap-4"
-              >
-                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center text-[var(--accent)] shrink-0 border border-[var(--border-main)]">
-                    {dev.device_name?.includes('Android') || dev.device_name?.includes('iPhone') ? (
-                      <Smartphone size={17} />
-                    ) : (
-                      <Monitor size={17} />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1 overflow-hidden">
-                    <div className="text-xs font-bold text-[var(--text-main)] flex items-center gap-2">
-                      <span className="truncate whitespace-nowrap">{dev.device_name || 'Устройство Aura'}</span>
-                      {dev.is_playing && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Воспроизводится" />
+            activeDevices.map((dev, idx) => {
+              const isCurrentDevice = dev.device_name === pocketBaseService.getDeviceName();
+              return (
+                <div
+                  key={idx}
+                  className="p-3 sm:p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between gap-3 sm:gap-4"
+                >
+                  <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center text-[var(--accent)] shrink-0 border border-[var(--border-main)]">
+                      {dev.device_name?.includes('Android') || dev.device_name?.includes('iPhone') ? (
+                        <Smartphone size={17} />
+                      ) : (
+                        <Monitor size={17} />
                       )}
                     </div>
-                    <div className="text-[11px] text-[var(--text-secondary)] truncate whitespace-nowrap mt-0.5">
-                      {dev.title ? `${dev.title} — ${dev.artist}` : 'Ожидание воспроизведения'}
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div className="text-xs font-bold text-[var(--text-main)] flex items-center gap-2">
+                        <span className="truncate whitespace-nowrap">{dev.device_name || 'Устройство Aura'}</span>
+                        {dev.is_playing && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Воспроизводится" />
+                        )}
+                        {isCurrentDevice && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-[var(--accent)]/15 text-[var(--accent)] font-semibold border border-[var(--accent)]/30">
+                            Текущее
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-secondary)] truncate whitespace-nowrap mt-0.5">
+                        {dev.title ? `${dev.title} — ${dev.artist}` : 'Ожидание воспроизведения'}
+                      </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!isCurrentDevice && dev.track_id && (
+                      <button
+                        onClick={() => pocketBaseService.transferPlaybackFromDevice(dev)}
+                        className="px-2.5 py-1 rounded-lg bg-[var(--accent)] hover:brightness-110 active:scale-95 text-[var(--accent-contrast)] text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        title="Слушать на этом устройстве"
+                      >
+                        <Play size={11} fill="currentColor" />
+                        <span className="hidden sm:inline">Слушать здесь</span>
+                      </button>
+                    )}
+                    <span className="text-[10px] text-emerald-400 font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 whitespace-nowrap">
+                      {dev.is_playing ? 'Играет' : 'В сети'}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-[10px] text-emerald-400 font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0 whitespace-nowrap ml-1.5 sm:ml-2">
-                  <span className="hidden sm:inline">Синхронизировано</span>
-                  <span className="sm:hidden inline">Онлайн</span>
-                </span>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="p-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-main)] flex items-center justify-between">
               <div className="flex items-center gap-2.5">

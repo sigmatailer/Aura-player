@@ -38,10 +38,11 @@ type ArtistTab = 'popular' | 'albums' | 'allTracks';
 
 export const ArtistDrawer: React.FC = () => {
   const { isOpen, artistName, artistId, viewMode, closeArtist } = useArtistStore();
+  const isModal = viewMode === 'modal';
   const { playContext, currentTrackIndex, isPlaying, togglePlayPause, queue } = usePlayerStore();
   const { likedTracks, toggleLike, downloadedTracks } = useCollectionStore();
   const yaToken = useSettingsStore(state => state.yandexToken);
-  const { customWallpaper } = useThemeStore();
+  const { customWallpaper, transparencyEnabled, glassStrength, glassBlur, windowOpacity } = useThemeStore();
 
   const [isLoading, setIsLoading] = useState(false);
   const [artistDetails, setArtistDetails] = useState<ArtistDetails | null>(null);
@@ -205,11 +206,73 @@ export const ArtistDrawer: React.FC = () => {
           return;
         }
 
-        // 2. Fetch brief-info for full popular tracks & direct albums
-        const briefRes: string = await invoke('yandex_api_request', {
-          url: `https://api.music.yandex.net/artists/${foundArtistId}/brief-info`,
-          token: yaToken || ''
-        });
+        // 2. Fetch brief-info for popular tracks & profile info, plus direct-albums for ALL releases
+        const fetchAllDirectAlbums = async (id: string, token: string): Promise<AlbumSummary[]> => {
+          try {
+            const page0Res: string = await invoke('yandex_api_request', {
+              url: `https://api.music.yandex.net/artists/${id}/direct-albums?page=0&pageSize=100&sortBy=year`,
+              token
+            });
+            const page0Data = JSON.parse(page0Res);
+            const page0Albums: any[] = page0Data.result?.albums || [];
+            const total: number = page0Data.result?.pager?.total || page0Albums.length;
+
+            let allRawAlbums = [...page0Albums];
+
+            if (total > 100) {
+              const remainingPages = Math.ceil(total / 100) - 1;
+              const maxPagesToFetch = Math.min(remainingPages, 10);
+              const pagePromises = [];
+              for (let p = 1; p <= maxPagesToFetch; p++) {
+                pagePromises.push(
+                  invoke('yandex_api_request', {
+                    url: `https://api.music.yandex.net/artists/${id}/direct-albums?page=${p}&pageSize=100&sortBy=year`,
+                    token
+                  }).then((res: any) => {
+                    const data = JSON.parse(res);
+                    return data.result?.albums || [];
+                  }).catch((err: any) => {
+                    console.error(`Failed to fetch albums page ${p}:`, err);
+                    return [];
+                  })
+                );
+              }
+              const results = await Promise.all(pagePromises);
+              for (const resAlbums of results) {
+                allRawAlbums.push(...resAlbums);
+              }
+            }
+
+            if (allRawAlbums.length === 0) return [];
+
+            // Sort newest first
+            allRawAlbums.sort((a: any, b: any) => {
+              const dateA = a.releaseDate ? new Date(a.releaseDate).getTime() : (a.year ? a.year * 10000 : 0);
+              const dateB = b.releaseDate ? new Date(b.releaseDate).getTime() : (b.year ? b.year * 10000 : 0);
+              return dateB - dateA;
+            });
+
+            return allRawAlbums.map((a: any) => ({
+              id: String(a.id),
+              title: a.title,
+              year: a.year,
+              type: a.type,
+              coverUrl: a.coverUri ? normalizeCoverUri(a.coverUri) : '',
+              trackCount: a.trackCount || 0
+            }));
+          } catch (e) {
+            console.error('Failed to fetch direct-albums:', e);
+            return [];
+          }
+        };
+
+        const [briefRes, directAlbums] = await Promise.all([
+          invoke('yandex_api_request', {
+            url: `https://api.music.yandex.net/artists/${foundArtistId}/brief-info`,
+            token: yaToken || ''
+          }) as Promise<string>,
+          fetchAllDirectAlbums(foundArtistId, yaToken || '')
+        ]);
 
         const briefData = JSON.parse(briefRes);
         const result = briefData.result;
@@ -221,14 +284,17 @@ export const ArtistDrawer: React.FC = () => {
           const genres = (art.genres && art.genres.length > 0) ? art.genres : initialGenres;
           const popularTracks: Track[] = (result.popularTracks || []).map(mapYandexTrack);
 
-          const albums: AlbumSummary[] = (result.albums || []).map((a: any) => ({
-            id: String(a.id),
-            title: a.title,
-            year: a.year,
-            type: a.type,
-            coverUrl: a.coverUri ? normalizeCoverUri(a.coverUri) : '',
-            trackCount: a.trackCount || 0
-          }));
+          let albums: AlbumSummary[] = directAlbums;
+          if (albums.length === 0 && result.albums && result.albums.length > 0) {
+            albums = (result.albums || []).map((a: any) => ({
+              id: String(a.id),
+              title: a.title,
+              year: a.year,
+              type: a.type,
+              coverUrl: a.coverUri ? normalizeCoverUri(a.coverUri) : '',
+              trackCount: a.trackCount || 0
+            }));
+          }
 
           setArtistDetails({
             id: foundArtistId,
@@ -379,33 +445,65 @@ export const ArtistDrawer: React.FC = () => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[10000] flex w-full h-full p-0 m-0 overflow-hidden">
-        {/* Slide-over Drawer or Centered Modal - Fullscreen on Android */}
+      <div className={`fixed inset-0 z-[10000] flex ${isModal ? 'items-center justify-center p-3 sm:p-5 md:p-8' : 'justify-end'}`}>
+        {/* Backdrop overlay */}
         <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={closeArtist}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        />
+
+        {/* Slide-over Drawer or Centered Modal */}
+        <motion.div 
+          initial={isModal ? { opacity: 0, scale: 0.95, y: 15 } : { x: '100%' }}
+          animate={isModal ? { opacity: 1, scale: 1, y: 0 } : { x: 0 }}
+          exit={isModal ? { opacity: 0, scale: 0.95, y: 15 } : { x: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 280 }}
           onClick={(e) => e.stopPropagation()}
-          className={`relative z-50 flex flex-col w-full h-full rounded-none border-0 overflow-hidden select-none ${
-            customWallpaper 
+          style={{
+            backgroundColor: transparencyEnabled && customWallpaper
+              ? `rgba(14, 12, 16, ${Math.max(0.15, (windowOpacity / 100) * 0.78)})`
+              : undefined,
+            backdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0
+              ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
+              : undefined,
+            WebkitBackdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0
+              ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
+              : undefined,
+            borderColor: transparencyEnabled && customWallpaper
+              ? `rgba(255, 255, 255, ${0.06 + (glassStrength / 100) * 0.16})`
+              : undefined,
+            boxShadow: transparencyEnabled && customWallpaper
+              ? `0 25px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,${(glassStrength / 100) * 0.20})`
+              : undefined
+          }}
+          className={`relative z-50 flex flex-col overflow-hidden select-none ${
+            isModal 
+              ? 'w-full max-w-2xl lg:max-w-3xl h-[88vh] max-h-[860px] rounded-3xl border border-[var(--border-main)] shadow-2xl' 
+              : 'w-full sm:w-[500px] md:w-[560px] lg:w-[620px] xl:w-[680px] h-full border-l border-[var(--border-main)] shadow-[-25px_0_60px_rgba(0,0,0,0.6)]'
+          } ${
+            customWallpaper && !transparencyEnabled
               ? 'bg-[var(--bg-main)]/90 backdrop-blur-2xl text-[var(--text-main)]' 
-              : 'bg-[var(--bg-main)] text-[var(--text-main)]'
+              : !customWallpaper
+                ? 'bg-[var(--bg-main)] text-[var(--text-main)]'
+                : 'text-[var(--text-main)]'
           }`}
         >
           {/* Close button Top-Right */}
           <button 
             onClick={closeArtist}
-            className="absolute top-11 right-4 md:top-4 md:right-4 z-50 w-10 h-10 rounded-full flex items-center justify-center bg-black/50 hover:bg-black/70 text-white border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xl active:scale-95"
+            className="absolute top-4 right-4 z-40 w-9 h-9 rounded-full flex items-center justify-center bg-black/40 hover:bg-black/60 text-white/70 hover:text-white border border-white/10 backdrop-blur-md transition-all cursor-pointer shadow-lg active:scale-95"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
 
           {/* If inside an album view */}
           {selectedAlbum ? (
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               {/* Back to artist button */}
-              <div className="p-4 pt-11 md:pt-4 flex items-center gap-3 border-b border-[var(--border-main)] bg-[var(--bg-surface)]/40 shrink-0">
+              <div className="p-4 flex items-center gap-3 border-b border-[var(--border-main)] bg-[var(--bg-surface)]/40 shrink-0">
                 <button 
                   onClick={() => {
                     setSelectedAlbum(null);
@@ -444,7 +542,7 @@ export const ArtistDrawer: React.FC = () => {
                   {albumTracks.length > 0 && (
                     <button 
                       onClick={handleTogglePlayAlbum}
-                      className="mt-4 self-start flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:brightness-110 transition-all shadow-md active:scale-95 cursor-pointer"
+                      className="mt-4 self-start flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-bold hover:brightness-110 transition-all shadow-md active:scale-95 cursor-pointer"
                     >
                       {isAlbumPlaying ? (
                         <>
@@ -510,26 +608,27 @@ export const ArtistDrawer: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <TrackOptionsPopover track={track} direction="down" />
+                          </div>
+
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleLike(track);
                             }}
-                            className="p-1 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                            className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${liked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                            title={liked ? "Убрать из любимых" : "В любимые"}
                           >
-                            <Heart size={15} fill={liked ? 'var(--accent)' : 'none'} color={liked ? 'var(--accent)' : 'currentColor'} />
+                            <Heart size={16} strokeWidth={1.7} fill={liked ? 'currentColor' : 'none'} />
                           </button>
 
                           <div onClick={(e) => e.stopPropagation()}>
                             <PlaylistPopover track={track} />
                           </div>
 
-                          <div onClick={(e) => e.stopPropagation()}>
-                            <TrackOptionsPopover track={track} direction="down" />
-                          </div>
-
-                          <span className="text-[11px] text-[var(--text-secondary)] font-mono ml-1 w-9 text-right">
+                          <span className="text-xs text-[#666] font-mono ml-1 w-9 text-right">
                             {formatDuration(track.duration)}
                           </span>
                         </div>
@@ -591,7 +690,7 @@ export const ArtistDrawer: React.FC = () => {
                               onClick={() => useArtistStore.getState().openArtist(a, null, viewMode)}
                               className={`px-2.5 py-0.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                                 isCurrent 
-                                  ? 'bg-[var(--accent)] text-white shadow-sm ring-1 ring-white/30' 
+                                  ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm ring-1 ring-white/30' 
                                   : 'bg-white/15 text-white/80 hover:bg-white/25 hover:text-white'
                               }`}
                             >
@@ -614,7 +713,7 @@ export const ArtistDrawer: React.FC = () => {
                       <div className="flex items-center gap-2.5 mt-3.5">
                         <button 
                           onClick={handleTogglePlayTop}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:brightness-110 transition-all shadow-md active:scale-95 cursor-pointer"
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-bold hover:brightness-110 transition-all shadow-md active:scale-95 cursor-pointer"
                         >
                           {isTopPlaying ? (
                             <>
@@ -650,7 +749,7 @@ export const ArtistDrawer: React.FC = () => {
                     onClick={() => setActiveTab('popular')}
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                       activeTab === 'popular'
-                        ? 'bg-[var(--accent)] text-white shadow-sm'
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm'
                         : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
                     }`}
                   >
@@ -662,7 +761,7 @@ export const ArtistDrawer: React.FC = () => {
                     onClick={() => setActiveTab('albums')}
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                       activeTab === 'albums'
-                        ? 'bg-[var(--accent)] text-white shadow-sm'
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm'
                         : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
                     }`}
                   >
@@ -679,7 +778,7 @@ export const ArtistDrawer: React.FC = () => {
                     }}
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                       activeTab === 'allTracks'
-                        ? 'bg-[var(--accent)] text-white shadow-sm'
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm'
                         : 'bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
                     }`}
                   >
@@ -764,26 +863,27 @@ export const ArtistDrawer: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <div onClick={(e) => e.stopPropagation()}>
+                                        <TrackOptionsPopover track={track} direction="down" />
+                                      </div>
+
                                       <button 
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           toggleLike(track);
                                         }}
-                                        className="p-1 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                                        className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${liked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                                        title={liked ? "Убрать из любимых" : "В любимые"}
                                       >
-                                        <Heart size={15} fill={liked ? 'var(--accent)' : 'none'} color={liked ? 'var(--accent)' : 'currentColor'} />
+                                        <Heart size={16} strokeWidth={1.7} fill={liked ? 'currentColor' : 'none'} />
                                       </button>
 
                                       <div onClick={(e) => e.stopPropagation()}>
                                         <PlaylistPopover track={track} />
                                       </div>
 
-                                      <div onClick={(e) => e.stopPropagation()}>
-                                        <TrackOptionsPopover track={track} direction="down" />
-                                      </div>
-
-                                      <span className="text-[11px] text-[var(--text-secondary)] font-mono ml-1 w-9 text-right">
+                                      <span className="text-xs text-[#666] font-mono ml-1 w-9 text-right">
                                         {formatDuration(track.duration)}
                                       </span>
                                     </div>
@@ -850,26 +950,27 @@ export const ArtistDrawer: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <div onClick={(e) => e.stopPropagation()}>
+                                        <TrackOptionsPopover track={track} direction="down" />
+                                      </div>
+
                                       <button 
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           toggleLike(track);
                                         }}
-                                        className="p-1 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                                        className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${liked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                                        title={liked ? "Убрать из любимых" : "В любимые"}
                                       >
-                                        <Heart size={15} fill={liked ? 'var(--accent)' : 'none'} color={liked ? 'var(--accent)' : 'currentColor'} />
+                                        <Heart size={16} strokeWidth={1.7} fill={liked ? 'currentColor' : 'none'} />
                                       </button>
 
                                       <div onClick={(e) => e.stopPropagation()}>
                                         <PlaylistPopover track={track} />
                                       </div>
 
-                                      <div onClick={(e) => e.stopPropagation()}>
-                                        <TrackOptionsPopover track={track} direction="down" />
-                                      </div>
-
-                                      <span className="text-[11px] text-[var(--text-secondary)] font-mono ml-1 w-9 text-right">
+                                      <span className="text-xs text-[#666] font-mono ml-1 w-9 text-right">
                                         {formatDuration(track.duration)}
                                       </span>
                                     </div>
@@ -913,7 +1014,7 @@ export const ArtistDrawer: React.FC = () => {
                                     </div>
                                   )}
                                   <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-white flex items-center justify-center shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-all">
+                                    <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-all">
                                       <Play size={16} fill="currentColor" className="ml-0.5" />
                                     </div>
                                   </div>
@@ -953,7 +1054,7 @@ export const ArtistDrawer: React.FC = () => {
                           <div className="flex items-center gap-2.5 mb-4">
                             <button 
                               onClick={handleTogglePlayAll}
-                              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:brightness-110 transition-all shadow-sm active:scale-95 cursor-pointer"
+                              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-bold hover:brightness-110 transition-all shadow-sm active:scale-95 cursor-pointer"
                             >
                               {isAllPlaying ? (
                                 <>
@@ -1038,26 +1139,27 @@ export const ArtistDrawer: React.FC = () => {
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-2 shrink-0">
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                      <TrackOptionsPopover track={track} direction="down" />
+                                    </div>
+
                                     <button 
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         toggleLike(track);
                                       }}
-                                      className="p-1 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                                      className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${liked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                                      title={liked ? "Убрать из любимых" : "В любимые"}
                                     >
-                                      <Heart size={15} fill={liked ? 'var(--accent)' : 'none'} color={liked ? 'var(--accent)' : 'currentColor'} />
+                                      <Heart size={16} strokeWidth={1.7} fill={liked ? 'currentColor' : 'none'} />
                                     </button>
 
                                     <div onClick={(e) => e.stopPropagation()}>
                                       <PlaylistPopover track={track} />
                                     </div>
 
-                                    <div onClick={(e) => e.stopPropagation()}>
-                                      <TrackOptionsPopover track={track} direction="down" />
-                                    </div>
-
-                                    <span className="text-[11px] text-[var(--text-secondary)] font-mono ml-1 w-9 text-right">
+                                    <span className="text-xs text-[#666] font-mono ml-1 w-9 text-right">
                                       {formatDuration(track.duration)}
                                     </span>
                                   </div>

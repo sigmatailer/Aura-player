@@ -471,7 +471,7 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
                 <button 
                   onClick={handleStartImport}
                   disabled={!url.trim()}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--text-main)] rounded-full font-bold text-xs transition-colors shadow-lg disabled:opacity-40"
+                  className="flex items-center gap-2 px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] rounded-full font-bold text-xs transition-colors shadow-lg disabled:opacity-40"
                 >
                   <Sparkles size={15} />
                   Начать импорт
@@ -677,7 +677,7 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
                       onOpenPlaylist(createdPlaylistId);
                       handleClose();
                     }}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--text-main)] rounded-full font-bold text-xs transition-colors shadow-lg"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] rounded-full font-bold text-xs transition-colors shadow-lg"
                   >
                     <Music2 size={15} />
                     Открыть плейлист

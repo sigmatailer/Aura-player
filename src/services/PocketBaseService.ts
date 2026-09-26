@@ -1,6 +1,7 @@
 import PocketBase from 'pocketbase';
-import { useAuthStore } from '../store/useAuthStore';
+import { useAuthStore, CloudUser } from '../store/useAuthStore';
 import { useCollectionStore, Playlist, setCollectionSyncListener } from '../store/useCollectionStore';
+import { usePlayerStore } from '../store/usePlayerStore';
 import { Track } from '../types';
 
 const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
@@ -58,13 +59,54 @@ async function makePortableCover(url?: string): Promise<string> {
   }
 }
 
+async function getBlobWithTimeout(url: string, timeoutMs: number = 3000): Promise<Blob | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return await res.blob();
+  } catch (e) {
+    console.warn('getBlobWithTimeout failed or timed out:', e);
+    return null;
+  }
+}
+
 class PocketBaseService {
   public pb: PocketBase;
   private unsubscribeFavorites: (() => void) | null = null;
   private unsubscribePlaylists: (() => void) | null = null;
+  private unsubscribeDevices: (() => void) | null = null;
+  private unsubscribeUser: (() => void) | null = null;
   private isSyncingFavorites: boolean = false;
   private isSyncingPlaylists: boolean = false;
   private isInternalSync: boolean = false;
+  private deviceListeners = new Set<() => void>();
+
+  public formatUserRecord(record: any): CloudUser {
+    const parseMedia = (val?: string) => {
+      if (!val) return undefined;
+      if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:') || val.startsWith('blob:')) {
+        return val;
+      }
+      try {
+        return this.pb.files.getURL(record, val);
+      } catch {
+        return val;
+      }
+    };
+
+    return {
+      id: record.id,
+      email: record.email,
+      name: record.name || record.username,
+      username: record.username || record.name,
+      avatar: parseMedia(record.avatar),
+      banner: parseMedia(record.banner),
+      status: record.status || undefined,
+      bio: record.bio || undefined
+    };
+  }
 
   constructor() {
     const url = useAuthStore.getState().serverUrl || 'http://31.77.15.175:8090';
@@ -85,11 +127,14 @@ class PocketBaseService {
 
     if (this.pb.authStore.isValid && this.pb.authStore.record) {
       const record = this.pb.authStore.record;
+      const formatted = this.formatUserRecord(record);
+      const currentUser = useAuthStore.getState().user;
       useAuthStore.getState().setUser({
-        id: record.id,
-        email: record.email,
-        name: record.name || record.username,
-        avatar: record.avatar ? this.pb.files.getURL(record, record.avatar) : undefined
+        ...formatted,
+        avatar: formatted.avatar || currentUser?.avatar,
+        banner: formatted.banner || currentUser?.banner,
+        status: formatted.status || currentUser?.status,
+        bio: formatted.bio || currentUser?.bio
       });
       useAuthStore.getState().setToken(this.pb.authStore.token);
       this.subscribeRealtime();
@@ -98,11 +143,34 @@ class PocketBaseService {
       }, 500);
     }
 
+    // Auto-resync when connection is restored
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        if (this.isLoggedIn()) {
+          this.subscribeRealtime();
+          this.syncAll().catch(() => {});
+        }
+      });
+    }
+
     // Register collection store sync listener
     setCollectionSyncListener({
       onTrackLiked: (track, isLiked) => this.onTrackLiked(track, isLiked),
       onPlaylistModified: (playlist) => this.onPlaylistModified(playlist),
       onPlaylistDeleted: (name) => this.onPlaylistDeleted(name)
+    });
+  }
+
+  public onDevicesChanged(cb: () => void): () => void {
+    this.deviceListeners.add(cb);
+    return () => {
+      this.deviceListeners.delete(cb);
+    };
+  }
+
+  private notifyDeviceListeners() {
+    this.deviceListeners.forEach(cb => {
+      try { cb(); } catch {}
     });
   }
 
@@ -125,11 +193,14 @@ class PocketBaseService {
       useAuthStore.getState().setSyncStatus('Авторизация...');
       const authData = await this.pb.collection('users').authWithPassword(identity.trim(), pass);
       const record = authData.record;
+      const formatted = this.formatUserRecord(record);
+      const currentUser = useAuthStore.getState().user;
       useAuthStore.getState().setUser({
-        id: record.id,
-        email: record.email,
-        name: record.name || record.username,
-        avatar: record.avatar ? this.pb.files.getURL(record, record.avatar) : undefined
+        ...formatted,
+        avatar: formatted.avatar || currentUser?.avatar,
+        banner: formatted.banner || currentUser?.banner,
+        status: formatted.status || currentUser?.status,
+        bio: formatted.bio || currentUser?.bio
       });
       useAuthStore.getState().setToken(authData.token);
       useAuthStore.getState().setSyncStatus('Успешно');
@@ -159,11 +230,13 @@ class PocketBaseService {
       useAuthStore.getState().setSyncStatus('Регистрация...');
       const cleanName = name.trim();
       const cleanEmail = email.trim();
+      const cleanUsername = cleanName.replace(/[^a-zA-Z0-9_]/g, '_');
       await this.pb.collection('users').create({
         email: cleanEmail,
         password: pass,
         passwordConfirm: passConfirm,
         name: cleanName,
+        username: cleanUsername || undefined,
       });
       return await this.login(cleanEmail, pass);
     } catch (err: any) {
@@ -189,6 +262,171 @@ class PocketBaseService {
     }
   }
 
+  public async updateProfile(fields: {
+    name?: string;
+    username?: string;
+    avatar?: string;
+    banner?: string;
+    status?: string;
+    bio?: string;
+    avatarBlob?: Blob;
+    bannerBlob?: Blob;
+  }) {
+    // 1. Immediately update client-side auth store & local storage
+    useAuthStore.getState().updateUser({
+      name: fields.name,
+      avatar: fields.avatar,
+      banner: fields.banner,
+      status: fields.status,
+      bio: fields.bio
+    });
+
+    const userId = this.getUserId();
+    if (!userId || !this.isLoggedIn()) {
+      return { success: true, localOnly: true };
+    }
+
+    try {
+      // 2. Prepare FormData so PocketBase receives files as proper binary blobs for 'file' type fields
+      const formData = new FormData();
+      if (fields.name) formData.append('name', fields.name);
+      if (fields.username) formData.append('username', fields.username);
+      if (fields.status !== undefined) formData.append('status', fields.status);
+      if (fields.bio !== undefined) formData.append('bio', fields.bio);
+
+      // Only upload avatar if a binary blob is provided, or if fields.avatar is a new local/external file
+      if (fields.avatarBlob) {
+        formData.append('avatar', fields.avatarBlob, 'avatar.jpg');
+      } else if (fields.avatar === '') {
+        formData.append('avatar', '');
+      } else if (fields.avatar) {
+        const isPbFile = fields.avatar.includes('/api/files/') || (this.pb.baseUrl && fields.avatar.includes(this.pb.baseUrl));
+        if (!isPbFile) {
+          try {
+            const blob = await getBlobWithTimeout(fields.avatar, 3000);
+            if (blob) {
+              formData.append('avatar', blob, 'avatar.jpg');
+            }
+          } catch (e) {
+            console.warn('Avatar blob fetch error:', e);
+          }
+        }
+      }
+
+      // Same for banner
+      if (fields.bannerBlob) {
+        formData.append('banner', fields.bannerBlob, 'banner.jpg');
+      } else if (fields.banner === '') {
+        formData.append('banner', '');
+      } else if (fields.banner) {
+        const isPbFile = fields.banner.includes('/api/files/') || (this.pb.baseUrl && fields.banner.includes(this.pb.baseUrl));
+        if (!isPbFile) {
+          try {
+            const blob = await getBlobWithTimeout(fields.banner, 3000);
+            if (blob) {
+              formData.append('banner', blob, 'banner.jpg');
+            }
+          } catch (e) {
+            console.warn('Banner blob fetch error:', e);
+          }
+        }
+      }
+
+      try {
+        const record = await this.pb.collection('users').update(userId, formData);
+        const formatted = this.formatUserRecord(record);
+        useAuthStore.getState().updateUser({
+          ...formatted,
+          avatar: fields.avatar === '' ? '' : (formatted.avatar || fields.avatar),
+          banner: fields.banner === '' ? '' : (formatted.banner || fields.banner)
+        });
+        return { success: true, record };
+      } catch (err: any) {
+        console.warn('FormData profile update failed, falling back to standard fields:', err);
+        const standardPayload: Record<string, any> = {};
+        if (fields.name !== undefined) standardPayload.name = fields.name;
+        if (fields.username !== undefined) standardPayload.username = fields.username;
+        if (Object.keys(standardPayload).length > 0) {
+          try {
+            await this.pb.collection('users').update(userId, standardPayload);
+          } catch {}
+        }
+        return { success: true };
+      }
+    } catch (err) {
+      console.warn('Failed to update PocketBase profile:', err);
+      return { success: false, error: err };
+    }
+  }
+
+  /**
+   * Complete analysis of tracks from users currently active in the application.
+   * Gathers live data from device_sync and playlists to discover trending songs and artists.
+   */
+  public async getCommunityListeningTrends(): Promise<{
+    trendingTracks: Track[];
+    activeUsersCount: number;
+    popularArtists: string[];
+  }> {
+    try {
+      const records = await this.pb.collection('device_sync').getFullList({
+        sort: '-updated',
+        limit: 100
+      });
+
+      const activeUsers = new Set<string>();
+      const artistCounts: Record<string, number> = {};
+      const trackMap = new Map<string, { track: Track; count: number }>();
+
+      for (const rec of records) {
+        if (rec.user) activeUsers.add(rec.user);
+        if (rec.title && rec.artist) {
+          const trackKey = `${rec.title.toLowerCase()} - ${rec.artist.toLowerCase()}`;
+          const existing = trackMap.get(trackKey);
+          const t: Track = {
+            id: rec.track_id || `comm_${Math.random().toString(36).substring(7)}`,
+            title: rec.title,
+            artist: rec.artist,
+            album: '',
+            duration: rec.duration || 0,
+            originalCoverUrl: rec.cover_url || null,
+            customCoverPath: null,
+            filePath: rec.file_path || (rec.track_id?.startsWith('ya_') ? `yandex:${rec.track_id.substring(3)}` : '')
+          };
+
+          if (existing) {
+            existing.count += 1;
+          } else {
+            trackMap.set(trackKey, { track: t, count: 1 });
+          }
+
+          const primaryArtist = rec.artist.split(/[,&/]|feat\.?|ft\.?/i)[0].trim();
+          if (primaryArtist) {
+            artistCounts[primaryArtist] = (artistCounts[primaryArtist] || 0) + 1;
+          }
+        }
+      }
+
+      const sortedTracks = Array.from(trackMap.values())
+        .sort((a, b) => b.count - a.count)
+        .map(item => item.track);
+
+      const popularArtists = Object.entries(artistCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([name]) => name);
+
+      return {
+        trendingTracks: sortedTracks,
+        activeUsersCount: Math.max(1, activeUsers.size),
+        popularArtists
+      };
+    } catch (err) {
+      console.warn('Community trends fetch skipped:', err);
+      return { trendingTracks: [], activeUsersCount: 1, popularArtists: [] };
+    }
+  }
+
   public logout() {
     if (this.unsubscribeFavorites) {
       this.unsubscribeFavorites();
@@ -197,6 +435,14 @@ class PocketBaseService {
     if (this.unsubscribePlaylists) {
       this.unsubscribePlaylists();
       this.unsubscribePlaylists = null;
+    }
+    if (this.unsubscribeDevices) {
+      this.unsubscribeDevices();
+      this.unsubscribeDevices = null;
+    }
+    if (this.unsubscribeUser) {
+      this.unsubscribeUser();
+      this.unsubscribeUser = null;
     }
     this.pb.authStore.clear();
     useAuthStore.getState().logout();
@@ -245,11 +491,26 @@ class PocketBaseService {
       const collectionStore = useCollectionStore.getState();
       const localLiked = collectionStore.likedTracks;
       const serverMap = new Map(serverTracks.map(t => [t.id, t]));
-      const localMap = new Map(localLiked.map(t => [t.id, t]));
 
-      // 1. Upload local favorites that are NOT on server
+      const favSyncKey = `aura_synced_favs_${userId}`;
+      const previouslySynced = new Set<string>(
+        JSON.parse(localStorage.getItem(favSyncKey) || '[]')
+      );
+
+      // Detect tracks deleted on other devices
+      const deletedRemotely = new Set<string>();
+      if (previouslySynced.size > 0) {
+        for (const id of previouslySynced) {
+          if (!serverMap.has(id)) {
+            deletedRemotely.add(id);
+          }
+        }
+      }
+
+      // 1. Upload local favorites that are NOT on server and NOT deleted remotely
       for (const track of localLiked) {
-        if (!serverMap.has(track.id)) {
+        if (deletedRemotely.has(track.id)) continue;
+        if (!serverMap.has(track.id) && !previouslySynced.has(track.id)) {
           try {
             await this.pb.collection('favorites').create({
               user: userId,
@@ -268,10 +529,12 @@ class PocketBaseService {
         }
       }
 
-      // 2. Add server favorites to local store if missing
-      const merged: Track[] = [...localLiked];
+      // 2. Keep local tracks that were not deleted remotely, and merge in server tracks
+      const filteredLocal = localLiked.filter(t => !deletedRemotely.has(t.id));
+      const filteredLocalMap = new Map(filteredLocal.map(t => [t.id, t]));
+      const merged: Track[] = [...filteredLocal];
       for (const track of serverTracks) {
-        if (!localMap.has(track.id)) {
+        if (!filteredLocalMap.has(track.id)) {
           merged.push(track);
         }
       }
@@ -279,6 +542,9 @@ class PocketBaseService {
       if (merged.length !== localLiked.length) {
         collectionStore.reorderLikedTracks(merged);
       }
+
+      // Save state of synced IDs
+      localStorage.setItem(favSyncKey, JSON.stringify(Array.from(serverMap.keys())));
     } catch (err) {
       console.error('syncFavorites error:', err);
     } finally {
@@ -290,8 +556,14 @@ class PocketBaseService {
     const userId = this.getUserId();
     if (!userId) return;
 
+    const favSyncKey = `aura_synced_favs_${userId}`;
+    const synced = new Set<string>(JSON.parse(localStorage.getItem(favSyncKey) || '[]'));
+
     try {
       if (isLiked) {
+        synced.add(track.id);
+        localStorage.setItem(favSyncKey, JSON.stringify(Array.from(synced)));
+
         const existing = await this.pb.collection('favorites').getList(1, 1, {
           filter: `user = "${userId}" && track_id = "${track.id}"`
         });
@@ -308,6 +580,9 @@ class PocketBaseService {
           });
         }
       } else {
+        synced.delete(track.id);
+        localStorage.setItem(favSyncKey, JSON.stringify(Array.from(synced)));
+
         const existing = await this.pb.collection('favorites').getList(1, 1, {
           filter: `user = "${userId}" && track_id = "${track.id}"`
         });
@@ -355,10 +630,28 @@ class PocketBaseService {
         if (lp.cloudId) localByCloudId.set(lp.cloudId, lp);
       }
 
+      const plSyncKey = `aura_synced_pls_${userId}`;
+      const previouslySyncedPls = new Set<string>(
+        JSON.parse(localStorage.getItem(plSyncKey) || '[]')
+      );
+
+      // Detect playlists deleted on other devices
+      const deletedPlsRemotely = new Set<string>();
+      if (previouslySyncedPls.size > 0) {
+        for (const cloudId of previouslySyncedPls) {
+          if (!serverById.has(cloudId)) {
+            deletedPlsRemotely.add(cloudId);
+          }
+        }
+      }
+
+      // Filter out playlists deleted remotely
+      let workingLocalPlaylists = localPlaylists.filter(p => !p.cloudId || !deletedPlsRemotely.has(p.cloudId));
+
       // 1. Merge server playlists into local store
       for (const serverPl of serverPlaylists) {
         const key = serverPl.name.trim().toLowerCase();
-        const localPl = localByCloudId.get(serverPl.id) || localByName.get(key);
+        const localPl = workingLocalPlaylists.find(p => (p.cloudId && p.cloudId === serverPl.id) || p.name.trim().toLowerCase() === key);
         const serverTracks = Array.isArray(serverPl.tracks) ? serverPl.tracks : [];
 
         if (localPl) {
@@ -403,13 +696,12 @@ class PocketBaseService {
             tracks: serverTracks,
             cloudId: serverPl.id
           };
-          localPlaylists.push(newLocalPl);
-          localByName.set(key, newLocalPl);
+          workingLocalPlaylists.push(newLocalPl);
         }
       }
 
-      // 2. Upload any local playlists not present on server
-      for (const localPl of localPlaylists) {
+      // 2. Upload any local playlists not present on server and not remotely deleted
+      for (const localPl of workingLocalPlaylists) {
         const key = localPl.name.trim().toLowerCase();
         if (!serverByName.has(key) && !localPl.cloudId) {
           try {
@@ -434,8 +726,12 @@ class PocketBaseService {
         }
       }
 
+      // Save synced cloud IDs
+      const allCloudIds = workingLocalPlaylists.map(p => p.cloudId).filter(Boolean) as string[];
+      localStorage.setItem(plSyncKey, JSON.stringify(allCloudIds));
+
       this.isInternalSync = true;
-      collectionStore.setPlaylists(localPlaylists);
+      collectionStore.setPlaylists(workingLocalPlaylists);
       this.isInternalSync = false;
     } catch (err) {
       console.error('syncPlaylists error:', err);
@@ -483,6 +779,10 @@ class PocketBaseService {
         } else {
           const created = await this.pb.collection('playlists').create(payload);
           playlist.cloudId = created.id;
+          const plSyncKey = `aura_synced_pls_${userId}`;
+          const current = new Set<string>(JSON.parse(localStorage.getItem(plSyncKey) || '[]'));
+          current.add(created.id);
+          localStorage.setItem(plSyncKey, JSON.stringify(Array.from(current)));
         }
       } catch (err) {
         console.warn('onPlaylistModified error:', err);
@@ -502,7 +802,12 @@ class PocketBaseService {
         filter: `user = "${userId}" && name = "${safeName}"`
       });
       if (existing.items.length > 0) {
-        await this.pb.collection('playlists').delete(existing.items[0].id);
+        const deletedId = existing.items[0].id;
+        await this.pb.collection('playlists').delete(deletedId);
+        const plSyncKey = `aura_synced_pls_${userId}`;
+        const current = new Set<string>(JSON.parse(localStorage.getItem(plSyncKey) || '[]'));
+        current.delete(deletedId);
+        localStorage.setItem(plSyncKey, JSON.stringify(Array.from(current)));
       }
     } catch (err) {
       console.warn('onPlaylistDeleted error:', err);
@@ -514,7 +819,7 @@ class PocketBaseService {
     if (!userId) return;
 
     try {
-      // Subscribe to favorites
+      // 1. Subscribe to favorites
       this.pb.collection('favorites').subscribe('*', (e) => {
         if (this.isSyncingFavorites || this.isInternalSync) return;
         const collectionStore = useCollectionStore.getState();
@@ -534,7 +839,7 @@ class PocketBaseService {
           }
         } else if (e.action === 'delete') {
           const trackId = e.record.track_id;
-          if (collectionStore.isLiked(trackId)) {
+          if (trackId && collectionStore.isLiked(trackId)) {
             const filtered = collectionStore.likedTracks.filter(t => t.id !== trackId);
             collectionStore.reorderLikedTracks(filtered);
           }
@@ -545,7 +850,7 @@ class PocketBaseService {
         console.warn('Realtime favorites subscribe error:', err);
       });
 
-      // Subscribe to playlists
+      // 2. Subscribe to playlists
       this.pb.collection('playlists').subscribe('*', (e) => {
         if (this.isSyncingPlaylists || this.isInternalSync) return;
         if (e.record.user !== userId) return;
@@ -592,6 +897,39 @@ class PocketBaseService {
       }).catch(err => {
         console.warn('Realtime playlists subscribe error:', err);
       });
+
+      // 3. Subscribe to active devices presence
+      this.pb.collection('device_sync').subscribe('*', (e) => {
+        if (e.record.user !== userId) return;
+        this.notifyDeviceListeners();
+      }).then(unsub => {
+        this.unsubscribeDevices = unsub;
+      }).catch(err => {
+        console.warn('Realtime devices subscribe error:', err);
+      });
+
+      // 4. Subscribe to user profile updates (realtime sync between phone/desktop)
+      if (this.unsubscribeUser) {
+        this.unsubscribeUser();
+        this.unsubscribeUser = null;
+      }
+      this.pb.collection('users').subscribe(userId, (e) => {
+        if (e.action === 'update' && e.record) {
+          const formatted = this.formatUserRecord(e.record);
+          const currentUser = useAuthStore.getState().user;
+          useAuthStore.getState().updateUser({
+            ...formatted,
+            avatar: formatted.avatar || currentUser?.avatar,
+            banner: formatted.banner || currentUser?.banner,
+            status: formatted.status || currentUser?.status,
+            bio: formatted.bio || currentUser?.bio
+          });
+        }
+      }).then(unsub => {
+        this.unsubscribeUser = unsub;
+      }).catch(err => {
+        console.warn('Realtime user profile subscribe error:', err);
+      });
     } catch (e) {
       console.warn('PocketBase realtime subscribe error:', e);
     }
@@ -614,6 +952,8 @@ class PocketBaseService {
         title: track.title,
         artist: track.artist,
         cover_url: track.originalCoverUrl || '',
+        file_path: track.filePath || '',
+        duration: track.duration || 0,
         progress: Math.round(progress),
         is_playing: isPlaying
       };
@@ -634,11 +974,37 @@ class PocketBaseService {
 
     try {
       return await this.pb.collection('device_sync').getFullList({
-        filter: `user = "${userId}"`
+        filter: `user = "${userId}"`,
+        sort: '-updated'
       });
     } catch {
       return [];
     }
+  }
+
+  public async transferPlaybackFromDevice(dev: any) {
+    if (!dev || !dev.track_id) return;
+
+    const trackToPlay: Track = {
+      id: dev.track_id,
+      title: dev.title || 'Трек',
+      artist: dev.artist || 'Неизвестный исполнитель',
+      album: '',
+      duration: dev.duration || 0,
+      originalCoverUrl: dev.cover_url || null,
+      customCoverPath: null,
+      filePath: dev.file_path || (dev.track_id.startsWith('ya_') ? 'yandex:' + dev.track_id.substring(3) : '')
+    };
+
+    usePlayerStore.getState().playContext([trackToPlay], 0);
+    if (typeof dev.progress === 'number' && dev.progress > 0) {
+      setTimeout(() => {
+        usePlayerStore.getState().setProgress(dev.progress);
+      }, 150);
+    }
+
+    // Immediately notify cloud of current device presence
+    this.updateDevicePresence(trackToPlay, dev.progress || 0, true);
   }
 }
 
