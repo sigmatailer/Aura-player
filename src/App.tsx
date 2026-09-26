@@ -338,7 +338,7 @@ function App() {
                   : undefined
               }}
             >
-              {/* Верхняя иконка (Главная) */}
+              {/* Верхняя иконка (Главная - треугольничек) */}
               <div className="flex flex-col w-full items-center shrink-0">
                 <button 
                   className={`p-2.5 rounded-2xl transition-all duration-200 cursor-pointer ${
@@ -347,10 +347,10 @@ function App() {
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/[0.04]'
                   }`}
                   onClick={() => setActiveTab('library')}
-                  data-tooltip={t('nav_queue')}
+                  data-tooltip="Главная"
                   data-tooltip-pos="right"
                 >
-                  <NavHomeIcon size={25} active={activeTab === 'library'} />
+                  <NavWaveIcon size={25} active={activeTab === 'library'} />
                 </button>
               </div>
 
@@ -363,10 +363,10 @@ function App() {
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/[0.04]'
                   }`}
                   onClick={() => setActiveTab('myvibe')}
-                  data-tooltip={t('nav_myvibe')}
+                  data-tooltip="Моя волна"
                   data-tooltip-pos="right"
                 >
-                  <NavWaveIcon size={25} active={activeTab === 'myvibe'} />
+                  <NavHomeIcon size={25} active={activeTab === 'myvibe'} />
                 </button>
                 <button 
                   className={`p-2.5 rounded-2xl transition-all duration-200 cursor-pointer ${
@@ -477,7 +477,7 @@ function App() {
                     <BottomPlayer />
                   </div>
                 ) : activeTab === 'library' ? (
-                  <div className="w-full px-3 sm:px-6 md:pl-5 md:pr-8 pt-3 sm:pt-6 flex flex-col gap-0 h-full overflow-hidden">
+                  <div className="w-full px-3 sm:px-6 md:pl-5 md:pr-8 pt-12 sm:pt-14 md:pt-6 flex flex-col gap-0 h-full overflow-hidden">
                     <div className="shrink-0 mb-3 sm:mb-4 relative z-30">
                       <TopPlayer />
                     </div>
@@ -487,7 +487,7 @@ function App() {
                   </div>
                 ) : (
                   <div className="w-full flex-1 min-h-0 flex flex-col">
-                    <div className="w-full px-3 sm:px-6 md:px-12 pt-3 sm:pt-6 flex-1 min-h-0 overflow-hidden">
+                    <div className="w-full px-3 sm:px-6 md:px-12 pt-12 sm:pt-14 md:pt-6 flex-1 min-h-0 overflow-hidden">
                       <SearchList onOpenSettings={() => {
                         setSettingsTab('services');
                         setIsSettingsOpen(true);
@@ -503,19 +503,22 @@ function App() {
 
         {/* Мобильная нижняя навигационная панель */}
         <nav className={`md:hidden shrink-0 pb-3.5 pt-1.5 border-t border-[var(--border-main)] flex items-center justify-around px-2 z-40 select-none ${customWallpaper ? 'bg-black/70 backdrop-blur-md' : 'bg-[var(--bg-surface)]'}`}>
-          <button 
-            className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'library' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
-            onClick={() => setActiveTab('library')}
-          >
-            <NavHomeIcon size={24} active={activeTab === 'library'} />
-            <span className="text-[10px]">Главная</span>
-          </button>
+          {/* Кнопка 1: Иконка домика -> открывает Волну */}
           <button 
             className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'myvibe' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
             onClick={() => setActiveTab('myvibe')}
           >
-            <NavWaveIcon size={24} active={activeTab === 'myvibe'} />
+            <NavHomeIcon size={24} active={activeTab === 'myvibe'} />
             <span className="text-[10px]">Волна</span>
+          </button>
+
+          {/* Кнопка 2: Иконка треугольничка -> открывает Главную */}
+          <button 
+            className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'library' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
+            onClick={() => setActiveTab('library')}
+          >
+            <NavWaveIcon size={24} active={activeTab === 'library'} />
+            <span className="text-[10px]">Главная</span>
           </button>
           <button 
             className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'search' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}

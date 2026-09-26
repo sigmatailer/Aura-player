@@ -131,12 +131,92 @@ export const Collections: React.FC = () => {
   const isDocked = view === 'none';
   const showSidebar = isDocked || isSidebarHovered;
 
+  const renderTopBar = () => {
+    return (
+      <div className="md:hidden flex items-center gap-2.5 px-4 py-3 overflow-x-auto scrollbar-hide border-b border-[var(--border-main)] shrink-0 select-none bg-transparent">
+        {/* All / Overview tab */}
+        <button
+          onClick={() => setView('none')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all ${
+            view === 'none'
+              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md'
+              : 'bg-white/[0.06] text-[var(--text-secondary)] hover:text-white'
+          }`}
+        >
+          <span>Все</span>
+        </button>
+
+        {/* Liked songs tab */}
+        <button
+          onClick={() => setView('liked')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all ${
+            view === 'liked'
+              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md'
+              : 'bg-white/[0.06] text-[var(--text-secondary)] hover:text-white'
+          }`}
+        >
+          <Heart size={14} fill={view === 'liked' ? 'currentColor' : 'none'} />
+          <span>Любимые</span>
+        </button>
+
+        {/* Downloaded songs tab */}
+        <button
+          onClick={() => setView('downloaded')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all ${
+            view === 'downloaded'
+              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md'
+              : 'bg-white/[0.06] text-[var(--text-secondary)] hover:text-white'
+          }`}
+        >
+          <Cloud size={14} fill={view === 'downloaded' ? 'currentColor' : 'none'} />
+          <span>Скачанные</span>
+        </button>
+
+        {/* Create playlist tab */}
+        <button
+          onClick={() => setIsChoiceModalOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 bg-white/[0.06] text-[var(--text-secondary)] hover:text-white transition-all"
+        >
+          <Plus size={14} />
+          <span>Создать</span>
+        </button>
+
+        <div className="w-[1px] h-5 bg-white/10 shrink-0" />
+
+        {/* Playlists as round badges with title */}
+        {playlists.map(pl => {
+          const isActive = view === 'playlist' && selectedPlaylistId === pl.id;
+          return (
+            <button
+              key={pl.id}
+              onClick={() => { setSelectedPlaylistId(pl.id); setView('playlist'); }}
+              className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium shrink-0 transition-all border ${
+                isActive
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-md'
+                  : 'border-white/10 bg-white/[0.04] text-[var(--text-secondary)] hover:text-white'
+              }`}
+            >
+              <div className="w-5 h-5 rounded-full overflow-hidden bg-black/40 shrink-0">
+                {pl.coverUrl ? (
+                  <MediaCover src={pl.coverUrl} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px]">🎵</div>
+                )}
+              </div>
+              <span className="truncate max-w-[120px]">{pl.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderSidebar = () => {
     return (
       <div 
         onMouseEnter={() => setIsSidebarHovered(true)}
         onMouseLeave={() => setIsSidebarHovered(false)}
-        className={`h-full transition-all duration-300 ease-in-out z-30 ${
+        className={`hidden md:block h-full transition-all duration-300 ease-in-out z-30 ${
           isDocked
             ? `w-[88px] flex-shrink-0 border-r border-[var(--border-main)] ${customWallpaper ? 'bg-black/40 backdrop-blur-md' : 'bg-[var(--bg-main)]'} relative overflow-hidden`
             : `absolute left-0 top-0 bottom-0 ${
@@ -228,55 +308,56 @@ export const Collections: React.FC = () => {
   const renderContent = () => {
     if (view === 'none') {
       return (
-        <div className="flex-1 h-full flex flex-col px-8 md:px-12 pt-8 pb-28 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 h-full flex flex-col px-4 sm:px-8 md:px-12 pt-3 sm:pt-6 md:pt-8 pb-28 overflow-y-auto scrollbar-hide">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8 shrink-0">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-black text-[var(--text-main)] tracking-tight">Медиатека</h1>
-              <p className="text-sm text-[var(--text-secondary)] mt-1 font-medium">
+          <div className="flex items-center justify-between mb-5 sm:mb-8 shrink-0 gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-[var(--text-main)] tracking-tight truncate">Медиатека</h1>
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5 sm:mt-1 font-medium truncate">
                 {playlists.length} {playlists.length === 1 ? 'плейлист' : playlists.length >= 2 && playlists.length <= 4 ? 'плейлиста' : 'плейлистов'} • {likedTracks.length} любимых треков
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setIsChoiceModalOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/18 text-white border border-white/15 backdrop-blur-md transition-all text-xs font-bold cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full bg-white/10 hover:bg-white/18 text-white border border-white/15 backdrop-blur-md transition-all text-xs font-bold cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
               >
                 <Plus size={15} />
-                Создать плейлист
+                <span className="hidden sm:inline">Создать плейлист</span>
+                <span className="sm:hidden">Создать</span>
               </button>
             </div>
           </div>
 
           {/* Quick Access Hero Cards (Dotify-style cards) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-10 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-8 sm:mb-10 shrink-0">
             {/* 1. Liked Songs Card */}
             <div
               onClick={() => setView('liked')}
-              className="relative group p-6 rounded-[24px] bg-gradient-to-br from-red-500/15 via-white/[0.04] to-transparent border border-white/[0.08] hover:border-red-500/40 transition-all duration-300 cursor-pointer overflow-hidden shadow-xl"
+              className="relative group p-5 sm:p-6 rounded-[24px] bg-gradient-to-br from-red-500/15 via-white/[0.04] to-transparent border border-white/[0.08] hover:border-red-500/40 transition-all duration-300 cursor-pointer overflow-hidden shadow-xl"
             >
               <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-10 group-hover:opacity-25 group-hover:scale-110 transition-all duration-500 pointer-events-none">
                 <Heart size={160} fill="currentColor" className="text-red-500" />
               </div>
               
-              <div className="relative z-10 flex flex-col justify-between h-[150px]">
+              <div className="relative z-10 flex flex-col justify-between h-[130px] sm:h-[150px]">
                 <div className="flex items-start justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-red-500/30">
-                    <Heart size={22} fill="currentColor" />
+                  <div className="w-11 sm:w-12 h-11 sm:h-12 rounded-2xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-red-500/30">
+                    <Heart size={20} fill="currentColor" />
                   </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handlePlayLiked();
                     }}
-                    className="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-200 hover:scale-110"
+                    className="w-11 sm:w-12 h-11 sm:h-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transform sm:translate-y-2 sm:group-hover:translate-y-0 transition-all duration-200 hover:scale-110"
                     title={isLikedPlaying ? "Пауза" : "Слушать любимые"}
                   >
-                    {isLikedPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                    {isLikedPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
                   </button>
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-white tracking-tight">Любимые треки</h3>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Любимые треки</h3>
                   <p className="text-xs text-white/60 font-medium mt-1">
                     {likedTracks.length} {likedTracks.length === 1 ? 'трек' : likedTracks.length >= 2 && likedTracks.length <= 4 ? 'трека' : 'треков'}
                   </p>
@@ -287,30 +368,30 @@ export const Collections: React.FC = () => {
             {/* 2. Downloaded Songs Card */}
             <div
               onClick={() => setView('downloaded')}
-              className="relative group p-6 rounded-[24px] bg-gradient-to-br from-cyan-500/15 via-white/[0.04] to-transparent border border-white/[0.08] hover:border-cyan-500/40 transition-all duration-300 cursor-pointer overflow-hidden shadow-xl"
+              className="relative group p-5 sm:p-6 rounded-[24px] bg-gradient-to-br from-cyan-500/15 via-white/[0.04] to-transparent border border-white/[0.08] hover:border-cyan-500/40 transition-all duration-300 cursor-pointer overflow-hidden shadow-xl"
             >
               <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-10 group-hover:opacity-25 group-hover:scale-110 transition-all duration-500 pointer-events-none">
                 <Cloud size={160} fill="currentColor" className="text-cyan-400" />
               </div>
 
-              <div className="relative z-10 flex flex-col justify-between h-[150px]">
+              <div className="relative z-10 flex flex-col justify-between h-[130px] sm:h-[150px]">
                 <div className="flex items-start justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30">
-                    <Cloud size={22} fill="currentColor" />
+                  <div className="w-11 sm:w-12 h-11 sm:h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30">
+                    <Cloud size={20} fill="currentColor" />
                   </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handlePlayDownloaded();
                     }}
-                    className="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-200 hover:scale-110"
+                    className="w-11 sm:w-12 h-11 sm:h-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transform sm:translate-y-2 sm:group-hover:translate-y-0 transition-all duration-200 hover:scale-110"
                     title={isDownloadedPlaying ? "Пауза" : "Слушать скачанные"}
                   >
-                    {isDownloadedPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                    {isDownloadedPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
                   </button>
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-white tracking-tight">Скачанные</h3>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Скачанные</h3>
                   <p className="text-xs text-white/60 font-medium mt-1">
                     {downloadedTracks.length} {downloadedTracks.length === 1 ? 'трек' : 'треков'} • Локальные и оффлайн
                   </p>
@@ -322,19 +403,20 @@ export const Collections: React.FC = () => {
           {/* Playlists Section */}
           <div className="flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white tracking-tight">Плейлисты</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Плейлисты</h2>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {/* Playlists: horizontal scroll on mobile, responsive grid on desktop */}
+            <div className="flex md:grid overflow-x-auto md:overflow-x-visible scrollbar-hide md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 sm:gap-4 pb-4 -mx-1 px-1">
               {/* Create Card */}
               <div
                 onClick={() => setIsChoiceModalOpen(true)}
-                className="group flex flex-col items-center justify-center aspect-square rounded-[20px] border-2 border-dashed border-white/10 hover:border-white/30 bg-white/[0.02] hover:bg-white/[0.05] transition-all cursor-pointer p-4 text-center"
+                className="group flex flex-col items-center justify-center aspect-square rounded-[20px] border-2 border-dashed border-white/10 hover:border-white/30 bg-white/[0.02] hover:bg-white/[0.05] transition-all cursor-pointer p-4 text-center w-[135px] sm:w-[155px] md:w-auto shrink-0"
               >
-                <div className="w-12 h-12 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center text-white/60 group-hover:text-white mb-2 transition-all group-hover:scale-110">
-                  <Plus size={24} />
+                <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center text-white/60 group-hover:text-white mb-2 transition-all group-hover:scale-110">
+                  <Plus size={22} />
                 </div>
-                <span className="text-xs font-semibold text-white/70 group-hover:text-white transition-colors">Создать плейлист</span>
+                <span className="text-xs font-semibold text-white/70 group-hover:text-white transition-colors">Создать</span>
               </div>
 
               {/* Playlist Cards */}
@@ -347,7 +429,7 @@ export const Collections: React.FC = () => {
                       setSelectedPlaylistId(pl.id);
                       setView('playlist');
                     }}
-                    className="group relative flex flex-col p-3 rounded-[20px] bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] hover:border-white/[0.15] transition-all duration-300 cursor-pointer shadow-md"
+                    className="group relative flex flex-col p-3 rounded-[20px] bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] hover:border-white/[0.15] transition-all duration-300 cursor-pointer shadow-md w-[135px] sm:w-[155px] md:w-auto shrink-0"
                   >
                     <div className="relative aspect-square w-full rounded-[16px] overflow-hidden bg-black/40 mb-3 shadow-md">
                       {pl.coverUrl ? (
@@ -855,7 +937,8 @@ export const Collections: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-row bg-transparent relative">
+    <div className="w-full h-full flex flex-col md:flex-row bg-transparent relative overflow-hidden pt-12 sm:pt-14 md:pt-0">
+      {renderTopBar()}
       {renderSidebar()}
       {renderContent()}
 

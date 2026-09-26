@@ -444,7 +444,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       onClick={(e) => e.stopPropagation()}
     >
       {/* 1. TOP HEADER (Main Navigation Tabs + Close Button) */}
-      <div className="flex items-center justify-between px-4 sm:px-8 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--border-main)] shrink-0 gap-3">
+      <div className="flex items-center justify-between px-4 sm:px-8 pt-12 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--border-main)] shrink-0 gap-3">
         <div className="flex items-center gap-4 sm:gap-7 overflow-x-auto scrollbar-hide py-1 flex-1 min-w-0">
           {[
             { id: 'profile', label: t('tab_account') },
@@ -458,7 +458,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
               <button
                 key={tab.id}
                 onClick={() => setMainTab(tab.id as MainTab)}
-                className={`text-[15px] font-bold transition-all relative pb-3 cursor-pointer whitespace-nowrap tracking-tight ${
+                className={`text-[14px] sm:text-[15px] font-bold transition-all relative pb-3 cursor-pointer whitespace-nowrap tracking-tight ${
                   isActive ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'
                 }`}
               >

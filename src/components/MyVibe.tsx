@@ -449,7 +449,7 @@ export const MyVibe: React.FC = () => {
   }, [likedTracks]);
 
   return (
-    <div className="w-full h-full flex flex-col justify-start bg-transparent p-4 sm:p-6 md:p-8 relative overflow-y-auto gap-6 select-none scrollbar-hide">
+    <div className="w-full h-full flex flex-col justify-start bg-transparent px-4 sm:px-6 md:px-8 pt-12 sm:pt-14 md:pt-8 pb-24 relative overflow-y-auto gap-6 select-none scrollbar-hide">
       
       {/* 1. Dotify-Style Majestic Wave Hero Banner */}
       <div className="w-full shrink-0 relative z-30">
