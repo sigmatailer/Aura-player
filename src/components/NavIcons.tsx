@@ -55,8 +55,8 @@ export const NavWaveIcon: React.FC<IconProps> = ({ size = 25, className = '', ac
         fill="currentColor" 
         className={className}
       >
-        {/* Solid filled play triangle with smooth rounded corners */}
-        <path d="M 5.8 4.8 C 4.5 4 2.8 5 2.8 6.6 V 17.4 C 2.8 19 4.5 20 5.8 19.2 L 20 13.8 C 21.3 13 21.3 11 20 10.2 L 5.8 4.8 Z" />
+        {/* Solid filled play triangle matching inactive dimensions exactly */}
+        <path d="M 6.2 6.5 C 6.2 5.3 7.5 4.6 8.5 5.2 L 18.2 11 C 19.1 11.5 19.1 12.5 18.2 13 L 8.5 18.8 C 7.5 19.4 6.2 18.7 6.2 17.5 Z" />
       </svg>
     );
   }
@@ -73,8 +73,7 @@ export const NavWaveIcon: React.FC<IconProps> = ({ size = 25, className = '', ac
       strokeLinejoin="round" 
       className={className}
     >
-      <path d="M 5.8 7 C 5.8 5.6 7.1 4.7 8.3 5.4 L 18.8 11.2 C 19.9 11.8 19.9 12.2 18.8 12.8 L 8.3 18.6 C 7.1 19.3 5.8 18.4 5.8 17 V 14.2" />
-      <path d="M 5.8 9.8 V 7" />
+      <path d="M 6.2 6.5 C 6.2 5.3 7.5 4.6 8.5 5.2 L 18.2 11 C 19.1 11.5 19.1 12.5 18.2 13 L 8.5 18.8 C 7.5 19.4 6.2 18.7 6.2 17.5 Z" />
     </svg>
   );
 };

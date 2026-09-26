@@ -4,9 +4,9 @@ import { usePlayerStore } from '../store/usePlayerStore';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
 import { 
-  Play, Pause, SkipBack, SkipForward, Volume2, Repeat, Shuffle, 
+  Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, 
   Maximize2, SlidersHorizontal, Image as ImageIcon, Heart, 
-  ThumbsDown, MoreVertical 
+  MoreVertical 
 } from 'lucide-react';
 import { ArtistLinks } from './ArtistLinks';
 import { TrackOptionsPopover } from './TrackOptionsPopover';
@@ -15,7 +15,7 @@ import { EqualizerPopover } from './EqualizerPopover';
 const TopPlayer: React.FC = () => {
   const { 
     queue, currentTrackIndex, isPlaying, togglePlayPause, 
-    nextTrack, prevTrack, volume, progress, setProgress, setVolume,
+    nextTrack, prevTrack, progress, setProgress,
     isShuffle, repeatMode, toggleShuffle, toggleRepeat
   } = usePlayerStore();
   const { toggleLike, isLiked } = useCollectionStore();
@@ -24,15 +24,14 @@ const TopPlayer: React.FC = () => {
   const coverVideoRef = useRef<HTMLVideoElement>(null);
   const eqButtonRef = useRef<HTMLButtonElement>(null);
   const [isEqOpen, setIsEqOpen] = useState(false);
-  const [volumeInputText, setVolumeInputText] = useState<string | null>(null);
 
   const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
   const coverUrl = customCover || currentTrack?.customCoverPath || currentTrack?.originalCoverUrl || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=200&auto=format&fit=crop';
 
   return (
     <div className="w-full flex flex-col md:flex-row items-center gap-4 sm:gap-6 md:gap-8 lg:gap-12 mt-0 bg-transparent select-none">
-      {/* Cover Art - Left (or Top on mobile) */}
-      <div className="w-[180px] h-[180px] sm:w-[240px] sm:h-[240px] md:w-[320px] md:h-[320px] lg:w-[370px] lg:h-[370px] shrink-0 rounded-[20px] overflow-hidden bg-transparent shadow-2xl shadow-black/80 border border-[var(--border-main)] relative group transition-all duration-300">
+      {/* Cover Art - Left (or Top on mobile) - Significantly enlarged */}
+      <div className="w-[270px] h-[270px] sm:w-[320px] sm:h-[320px] md:w-[340px] md:h-[340px] lg:w-[370px] lg:h-[370px] shrink-0 rounded-[26px] overflow-hidden bg-transparent shadow-2xl shadow-black/80 border border-[var(--border-main)] relative group transition-all duration-300">
         {currentTrack || customCover ? (
           <>
             {isVideoUrl(coverUrl) ? (
@@ -196,91 +195,16 @@ const TopPlayer: React.FC = () => {
             </button>
           </div>
 
-          {/* ThumbsDown Dislike on far right */}
-          <button 
-            onClick={() => nextTrack(false)}
-            className="text-[#777] hover:text-[var(--accent)] transition-colors p-1"
-            title="Не нравится (следующий трек)"
-          >
-            <ThumbsDown size={19} strokeWidth={1.8} />
-          </button>
-        </div>
-
-        {/* Bottom Row: Volume Slider & Equalizer Button */}
-        <div className="w-full flex items-center justify-between gap-4">
-          {/* Volume on left (responsive full width) */}
-          <div className="flex-1 flex items-center gap-3 bg-transparent border border-white/[0.05] rounded-full px-4 py-2 shadow-sm">
-            <Volume2 size={16} className="text-[#777] shrink-0" />
-            <input 
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={volume}
-              onChange={(e) => {
-                setVolume(parseFloat(e.target.value));
-                if (volumeInputText !== null) setVolumeInputText(null);
-              }}
-              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-0 [&::-webkit-slider-thumb]:opacity-0 [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-0 [&::-moz-range-thumb]:opacity-0 [&::-moz-range-thumb]:border-0"
-              style={{
-                background: `linear-gradient(to right, var(--accent) ${volume * 100}%, rgba(255,255,255,0.1) ${volume * 100}%)`
-              }}
-            />
-            <div className="flex items-center justify-center shrink-0 select-none">
-              <input 
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={volumeInputText !== null ? volumeInputText : Math.round(volume * 100)}
-                onFocus={() => setVolumeInputText(Math.round(volume * 100).toString())}
-                onBlur={() => {
-                  if (volumeInputText !== null) {
-                    const val = parseInt(volumeInputText, 10);
-                    if (!isNaN(val)) {
-                      setVolume(Math.min(100, Math.max(0, val)) / 100);
-                    }
-                    setVolumeInputText(null);
-                  }
-                }}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9]/g, '');
-                  if (raw === '') {
-                    setVolumeInputText('');
-                    return;
-                  }
-                  const val = parseInt(raw, 10);
-                  const clamped = Math.min(100, Math.max(0, val));
-                  setVolumeInputText(clamped.toString());
-                  setVolume(clamped / 100);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-                onWheel={(e) => {
-                  e.preventDefault();
-                  const delta = e.deltaY < 0 ? 0.02 : -0.02;
-                  const newVol = Math.min(1, Math.max(0, parseFloat((volume + delta).toFixed(2))));
-                  setVolume(newVol);
-                  setVolumeInputText(Math.round(newVol * 100).toString());
-                }}
-                className="w-6 text-center bg-transparent text-xs font-mono font-semibold text-[var(--text-main)] outline-none border-b border-transparent focus:border-[var(--accent)] hover:text-[var(--accent)] transition-colors p-0 leading-none"
-                title="Громкость (0-100)"
-              />
-            </div>
-          </div>
-
-          {/* Equalizer button on right with Popover shutter directly above it */}
-          <div className="relative shrink-0">
+          {/* Equalizer button on far right (replacing Dislike) */}
+          <div className="relative flex items-center">
             <button 
               ref={eqButtonRef}
               data-eq-trigger="true"
               onClick={() => setIsEqOpen(prev => !prev)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all shadow-sm ${
+              className={`p-1.5 rounded-full flex items-center justify-center transition-all ${
                 isEqOpen 
-                  ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]' 
-                  : 'border-white/[0.05] hover:border-white/20 text-[var(--accent)] hover:scale-105 hover:bg-white/5'
+                  ? 'text-[var(--accent)] scale-110' 
+                  : 'text-[#777] hover:text-[var(--accent)] hover:scale-105'
               }`}
               title="Эквалайзер"
             >

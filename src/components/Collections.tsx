@@ -133,77 +133,81 @@ export const Collections: React.FC = () => {
 
   const renderTopBar = () => {
     return (
-      <div className="md:hidden flex items-center gap-2.5 px-4 py-3 overflow-x-auto scrollbar-hide border-b border-[var(--border-main)] shrink-0 select-none bg-transparent">
+      <div className="md:hidden flex items-center gap-2.5 px-4 py-2.5 overflow-x-auto scrollbar-hide border-b border-[var(--border-main)] shrink-0 select-none bg-black/20 backdrop-blur-md">
         {/* All / Overview tab */}
         <button
           onClick={() => setView('none')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all ${
+          className={`h-11 px-3.5 shrink-0 rounded-[16px] flex items-center justify-center gap-1.5 transition-all text-xs font-bold ${
             view === 'none'
-              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md'
-              : 'bg-white/[0.06] text-[var(--text-secondary)] hover:text-white'
+              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md shadow-[var(--accent)]/20'
+              : 'bg-white/[0.05] text-[var(--text-secondary)] border border-white/[0.08] hover:text-white'
           }`}
         >
           <span>Все</span>
         </button>
 
-        {/* Liked songs tab */}
+        {/* Liked songs squircle button */}
         <button
           onClick={() => setView('liked')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all ${
+          className={`w-11 h-11 shrink-0 rounded-[16px] flex items-center justify-center transition-all ${
             view === 'liked'
-              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md'
-              : 'bg-white/[0.06] text-[var(--text-secondary)] hover:text-white'
+              ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-2 border-[var(--accent)] shadow-[0_0_12px_var(--accent)]'
+              : 'bg-white/[0.05] text-[var(--text-secondary)] border border-white/[0.08] hover:text-[var(--accent)]'
           }`}
+          title="Любимые треки"
         >
-          <Heart size={14} fill={view === 'liked' ? 'currentColor' : 'none'} />
-          <span>Любимые</span>
+          <Heart size={18} strokeWidth={2} fill={view === 'liked' ? 'currentColor' : 'none'} />
         </button>
 
-        {/* Downloaded songs tab */}
+        {/* Downloaded songs squircle button */}
         <button
           onClick={() => setView('downloaded')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all ${
+          className={`w-11 h-11 shrink-0 rounded-[16px] flex items-center justify-center transition-all ${
             view === 'downloaded'
-              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md'
-              : 'bg-white/[0.06] text-[var(--text-secondary)] hover:text-white'
+              ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-2 border-[var(--accent)] shadow-[0_0_12px_var(--accent)]'
+              : 'bg-white/[0.05] text-[var(--text-secondary)] border border-white/[0.08] hover:text-[var(--accent)]'
           }`}
+          title="Скачанные треки"
         >
-          <Cloud size={14} fill={view === 'downloaded' ? 'currentColor' : 'none'} />
-          <span>Скачанные</span>
+          <Cloud size={18} strokeWidth={2} fill={view === 'downloaded' ? 'currentColor' : 'none'} />
         </button>
 
-        {/* Create playlist tab */}
+        {/* Create playlist squircle button */}
         <button
           onClick={() => setIsChoiceModalOpen(true)}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 bg-white/[0.06] text-[var(--text-secondary)] hover:text-white transition-all"
+          className="w-11 h-11 shrink-0 rounded-[16px] flex items-center justify-center transition-all bg-white/[0.05] text-[var(--text-secondary)] border border-white/[0.08] hover:text-white active:scale-95"
+          title="Создать или импортировать плейлист"
         >
-          <Plus size={14} />
-          <span>Создать</span>
+          <Plus size={20} strokeWidth={2} />
         </button>
 
-        <div className="w-[1px] h-5 bg-white/10 shrink-0" />
+        {playlists.length > 0 && (
+          <div className="w-[1px] h-6 bg-white/10 shrink-0 mx-0.5" />
+        )}
 
-        {/* Playlists as round badges with title */}
+        {/* Playlists as circular covers matching PC sidebar */}
         {playlists.map(pl => {
           const isActive = view === 'playlist' && selectedPlaylistId === pl.id;
           return (
             <button
               key={pl.id}
               onClick={() => { setSelectedPlaylistId(pl.id); setView('playlist'); }}
-              className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium shrink-0 transition-all border ${
+              className={`w-11 h-11 shrink-0 rounded-full transition-all relative p-[2px] flex items-center justify-center ${
                 isActive
-                  ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-md'
-                  : 'border-white/10 bg-white/[0.04] text-[var(--text-secondary)] hover:text-white'
+                  ? 'border-2 border-[var(--accent)] shadow-[0_0_14px_var(--accent)] scale-105'
+                  : 'border-2 border-white/10 hover:border-white/30'
               }`}
+              title={pl.name}
             >
-              <div className="w-5 h-5 rounded-full overflow-hidden bg-black/40 shrink-0">
+              <div className="w-full h-full rounded-full overflow-hidden bg-[var(--bg-surface)]">
                 {pl.coverUrl ? (
                   <MediaCover src={pl.coverUrl} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px]">🎵</div>
+                  <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)] text-xs font-bold">
+                    {pl.name.charAt(0).toUpperCase()}
+                  </div>
                 )}
               </div>
-              <span className="truncate max-w-[120px]">{pl.name}</span>
             </button>
           );
         })}
@@ -937,7 +941,7 @@ export const Collections: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col md:flex-row bg-transparent relative overflow-hidden pt-12 sm:pt-14 md:pt-0">
+    <div className="w-full h-full flex flex-col md:flex-row bg-transparent relative overflow-hidden pt-16 sm:pt-16 md:pt-0">
       {renderTopBar()}
       {renderSidebar()}
       {renderContent()}

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, HardDrive, 
   Moon, Sun, Monitor, Plus, Image as ImageIcon, Trash2,
-  ChevronLeft, ChevronRight, Upload, Package, Disc, Sparkles, Check, Camera, Loader2
+  ChevronLeft, ChevronRight, Upload, Package, Disc, Sparkles, Check, Camera, Loader2,
+  ExternalLink, Copy, KeyRound
 } from 'lucide-react';
 import { useSettingsStore, usePlayerStore } from '../store/usePlayerStore';
 import { useAppSettingsStore } from '../store/useAppSettingsStore';
@@ -12,8 +13,9 @@ import { useAuthStore, CloudUser } from '../store/useAuthStore';
 import { pocketBaseService } from '../services/PocketBaseService';
 import { useCacheStore, CacheStats } from '../store/useCacheStore';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readFile } from '@tauri-apps/plugin-fs';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 interface SettingsDrawerProps {
   onClose: () => void;
@@ -186,8 +188,74 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
 
-  // Yandex Token input
+  // Mobile file picker refs
+  const mediaFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Yandex Token input & Device Auth state
   const [yaInputToken, setYaInputToken] = useState('');
+  interface DeviceCodeInfo {
+    device_code: string;
+    user_code: string;
+    verification_url: string;
+    expires_in: number;
+    interval: number;
+  }
+  const [deviceAuthInfo, setDeviceAuthInfo] = useState<DeviceCodeInfo | null>(null);
+  const [isGettingCode, setIsGettingCode] = useState(false);
+  const [isCopiedCode, setIsCopiedCode] = useState(false);
+  const [showManualYaInput, setShowManualYaInput] = useState(false);
+  const [yaAuthError, setYaAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>('yandex-token', (event) => {
+      if (event.payload) {
+        setYandexToken(event.payload);
+        setDeviceAuthInfo(null);
+        setIsGettingCode(false);
+      }
+    }).then(fn => { unlisten = fn; }).catch(() => {});
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [setYandexToken]);
+
+  const handleStartYandexDeviceAuth = async () => {
+    setIsGettingCode(true);
+    setYaAuthError(null);
+    try {
+      const res = await invoke<DeviceCodeInfo>('start_yandex_oauth');
+      setDeviceAuthInfo(res);
+      if (res.user_code) {
+        const fullUrl = `https://oauth.yandex.ru/device?user_code=${res.user_code}`;
+        try {
+          await openUrl(fullUrl);
+        } catch {
+          window.open(fullUrl, '_blank');
+        }
+      }
+    } catch (e: any) {
+      console.warn('Invoke start_yandex_oauth failed, trying fetch fallback:', e);
+      try {
+        const resp = await fetch('https://oauth.yandex.ru/device/code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'client_id=23cabbbdc6cd418abb4b39c32c41195d'
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        setDeviceAuthInfo(data);
+        const fullUrl = `https://oauth.yandex.ru/device?user_code=${data.user_code}`;
+        try { await openUrl(fullUrl); } catch { window.open(fullUrl, '_blank'); }
+      } catch (err: any) {
+        setYaAuthError(err?.message || 'Не удалось получить код устройства');
+      }
+    } finally {
+      setIsGettingCode(false);
+    }
+  };
 
   useEffect(() => {
     if (generalSubTab === 'storage' && mainTab === 'general') {
@@ -341,7 +409,65 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     };
   }, [nickname, avatarUrl, bannerUrl, statusText, bioText, flushSaveProfile]);
 
+  const handleMediaFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      const isVid = file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name);
+      const isG = file.type === 'image/gif' || /\.gif$/i.test(file.name);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const resultUrl = reader.result as string;
+        addMediaItem({
+          id: 'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          name: file.name,
+          url: resultUrl,
+          type: isVid ? 'video' : (isG ? 'gif' : 'image'),
+          createdAt: Date.now()
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleAvatarFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const resultUrl = reader.result as string;
+      setAvatarUrl(resultUrl);
+      useAuthStore.getState().updateUser({ avatar: resultUrl });
+      flushSaveProfile({ avatar: resultUrl }, { avatarBlob: file });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleBannerFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const resultUrl = reader.result as string;
+      setBannerUrl(resultUrl);
+      useAuthStore.getState().updateUser({ banner: resultUrl });
+      flushSaveProfile({ banner: resultUrl }, { bannerBlob: file });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleSelectFile = async (setter: (val: string) => void, field?: 'avatar' | 'banner') => {
+    if (field === 'avatar') {
+      avatarFileInputRef.current?.click();
+      return;
+    }
+    if (field === 'banner') {
+      bannerFileInputRef.current?.click();
+      return;
+    }
     try {
       const selected = await open({
         multiple: false,
@@ -350,55 +476,14 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       if (selected && typeof selected === 'string') {
         const safeUrl = convertFileSrc(selected);
         setter(safeUrl);
-
-        let blob: Blob | undefined;
-        try {
-          const fileBytes = await readFile(selected);
-          const ext = selected.split('.').pop()?.toLowerCase() || 'jpg';
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
-          blob = new Blob([fileBytes], { type: mime });
-        } catch (e) {
-          console.warn('Could not read image file directly via plugin-fs:', e);
-        }
-
-        if (field) {
-          useAuthStore.getState().updateUser({ [field]: safeUrl });
-          const blobPayload = field === 'avatar' ? { avatarBlob: blob } : { bannerBlob: blob };
-          flushSaveProfile({ [field]: safeUrl }, blobPayload);
-        }
       }
     } catch (err) {
-      console.error(err);
+      console.warn('Native open failed:', err);
     }
   };
 
   const handlePickLocalMedia = async () => {
-    try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          { name: 'Медиа (Изображения, GIF, Видео)', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'mov'] }
-        ]
-      });
-      if (selected) {
-        const files = Array.isArray(selected) ? selected : [selected];
-        files.forEach(filePath => {
-          const safeUrl = convertFileSrc(filePath);
-          const isVid = isVideoUrl(filePath);
-          const isG = filePath.toLowerCase().endsWith('.gif');
-          const name = filePath.split(/[/\\]/).pop() || 'Медиа';
-          addMediaItem({
-            id: 'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-            name,
-            url: safeUrl,
-            type: isVid ? 'video' : (isG ? 'gif' : 'image'),
-            createdAt: Date.now()
-          });
-        });
-      }
-    } catch (err) {
-      console.error('File pick error:', err);
-    }
+    mediaFileInputRef.current?.click();
   };
 
   const handleAddMediaUrl = () => {
@@ -444,7 +529,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       onClick={(e) => e.stopPropagation()}
     >
       {/* 1. TOP HEADER (Main Navigation Tabs + Close Button) */}
-      <div className="flex items-center justify-between px-4 sm:px-8 pt-12 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--border-main)] shrink-0 gap-3">
+      <div className="flex items-center justify-between px-4 sm:px-8 pt-16 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--border-main)] shrink-0 gap-3">
         <div className="flex items-center gap-4 sm:gap-7 overflow-x-auto scrollbar-hide py-1 flex-1 min-w-0">
           {[
             { id: 'profile', label: t('tab_account') },
@@ -1791,7 +1876,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         {/* ===================== TAB 4: СЕРВИСЫ ===================== */}
         {mainTab === 'services' && (
           <div className="space-y-5 animate-in fade-in duration-200">
-            <div className="p-5 rounded-[22px] bg-white/[0.03] border border-white/[0.06] space-y-3 shadow-sm">
+            <div className="p-5 rounded-[22px] bg-white/[0.03] border border-white/[0.06] space-y-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span className="text-sm font-bold text-white">Яндекс Музыка</span>
@@ -1806,40 +1891,127 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                   )}
                 </div>
               </div>
+
               <p className="text-xs text-white/60 leading-relaxed">
                 Авторизация дает доступ к «Моей волне», вашим плейлистам и воспроизведению в высоком качестве.
               </p>
-              <div className="flex items-center gap-2 pt-1">
-                {yandexToken ? (
+
+              {yandexToken ? (
+                <div className="flex items-center gap-3 pt-2">
                   <button
-                    onClick={() => setYandexToken(null)}
-                    className="px-4 py-2 rounded-[14px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold transition-all cursor-pointer"
+                    onClick={() => {
+                      setYandexToken(null);
+                      setDeviceAuthInfo(null);
+                    }}
+                    className="px-4 py-2.5 rounded-[14px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold transition-all cursor-pointer"
                   >
                     Выйти из Яндекс Музыки
                   </button>
-                ) : (
-                  <div className="flex-1 flex gap-2">
-                    <input
-                      type="password"
-                      placeholder="Вставьте токен Yandex..."
-                      value={yaInputToken}
-                      onChange={(e) => setYaInputToken(e.target.value)}
-                      className="flex-1 px-4 py-2 rounded-[14px] bg-white/[0.04] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/40"
-                    />
+                </div>
+              ) : (
+                <div className="space-y-4 pt-1">
+                  {!deviceAuthInfo ? (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={handleStartYandexDeviceAuth}
+                        disabled={isGettingCode}
+                        className="py-3 px-5 rounded-[14px] bg-[var(--accent)] hover:brightness-110 text-white text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isGettingCode ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Получаем код устройства...</span>
+                          </>
+                        ) : (
+                          <>
+                            <KeyRound size={16} />
+                            <span>Войти через код (ya.ru/device)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-[18px] bg-white/[0.04] border border-white/[0.08] space-y-3.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-white/50 uppercase font-semibold block">Одноразовый код</span>
+                          <span className="text-2xl font-mono font-bold tracking-widest text-[var(--accent)] select-all mt-0.5 block">
+                            {deviceAuthInfo.user_code}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(deviceAuthInfo.user_code);
+                            setIsCopiedCode(true);
+                            setTimeout(() => setIsCopiedCode(false), 2000);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs text-white flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        >
+                          {isCopiedCode ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                          <span>{isCopiedCode ? 'Скопировано' : 'Копировать'}</span>
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          const url = `https://oauth.yandex.ru/device?user_code=${deviceAuthInfo.user_code}`;
+                          try { openUrl(url); } catch { window.open(url, '_blank'); }
+                        }}
+                        className="w-full py-2.5 px-4 bg-[var(--accent)] hover:brightness-110 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95"
+                      >
+                        <ExternalLink size={14} />
+                        <span>Открыть страницу ya.ru/device</span>
+                      </button>
+
+                      <div className="flex items-center gap-2 text-[11px] text-white/60 justify-center pt-1">
+                        <Loader2 size={13} className="animate-spin text-[var(--accent)]" />
+                        <span>Ожидаем подтверждения в Яндекс ID...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {yaAuthError && (
+                    <div className="text-xs text-red-400 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
+                      {yaAuthError}
+                    </div>
+                  )}
+
+                  {/* Manual token input option */}
+                  <div className="pt-2 border-t border-white/[0.06]">
                     <button
-                      onClick={() => {
-                        if (yaInputToken.trim()) {
-                          setYandexToken(yaInputToken.trim());
-                          setYaInputToken('');
-                        }
-                      }}
-                      className="px-5 py-2 rounded-[14px] bg-white text-black text-xs font-bold hover:bg-white/90 cursor-pointer shadow-md transition-all active:scale-95"
+                      type="button"
+                      onClick={() => setShowManualYaInput(!showManualYaInput)}
+                      className="text-[11px] text-white/50 hover:text-white transition-colors"
                     >
-                      Сохранить
+                      {showManualYaInput ? 'Скрыть ручной ввод токена' : 'Или ввести токен вручную'}
                     </button>
+
+                    {showManualYaInput && (
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          type="password"
+                          placeholder="y0_AgAAAA... или токен Яндекса"
+                          value={yaInputToken}
+                          onChange={(e) => setYaInputToken(e.target.value)}
+                          className="flex-1 px-4 py-2 rounded-[14px] bg-white/[0.04] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/40"
+                        />
+                        <button
+                          onClick={() => {
+                            if (yaInputToken.trim()) {
+                              setYandexToken(yaInputToken.trim());
+                              setYaInputToken('');
+                              setDeviceAuthInfo(null);
+                            }
+                          }}
+                          className="px-5 py-2 rounded-[14px] bg-white text-black text-xs font-bold hover:bg-white/90 cursor-pointer shadow-md transition-all active:scale-95"
+                        >
+                          Сохранить
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1880,6 +2052,29 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         </div>
       )}
 
+      {/* Hidden file inputs for reliable mobile media picking */}
+      <input
+        ref={mediaFileInputRef}
+        type="file"
+        accept="image/*,video/*,.gif"
+        multiple
+        className="hidden"
+        onChange={handleMediaFilesSelected}
+      />
+      <input
+        ref={avatarFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleAvatarFileSelected}
+      />
+      <input
+        ref={bannerFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleBannerFileSelected}
+      />
 
     </motion.aside>
   );

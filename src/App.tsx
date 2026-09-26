@@ -477,7 +477,7 @@ function App() {
                     <BottomPlayer />
                   </div>
                 ) : activeTab === 'library' ? (
-                  <div className="w-full px-3 sm:px-6 md:pl-5 md:pr-8 pt-12 sm:pt-14 md:pt-6 flex flex-col gap-0 h-full overflow-hidden">
+                  <div className="w-full px-3 sm:px-6 md:pl-5 md:pr-8 pt-16 sm:pt-16 md:pt-6 flex flex-col gap-0 h-full overflow-hidden">
                     <div className="shrink-0 mb-3 sm:mb-4 relative z-30">
                       <TopPlayer />
                     </div>
@@ -487,7 +487,7 @@ function App() {
                   </div>
                 ) : (
                   <div className="w-full flex-1 min-h-0 flex flex-col">
-                    <div className="w-full px-3 sm:px-6 md:px-12 pt-12 sm:pt-14 md:pt-6 flex-1 min-h-0 overflow-hidden">
+                    <div className="w-full px-3 sm:px-6 md:px-12 pt-16 sm:pt-16 md:pt-6 flex-1 min-h-0 overflow-hidden">
                       <SearchList onOpenSettings={() => {
                         setSettingsTab('services');
                         setIsSettingsOpen(true);
@@ -537,18 +537,12 @@ function App() {
           <button 
             className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${isSettingsOpen ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'} hover:text-[var(--text-main)] relative`}
             onClick={() => {
-              setSettingsTab('account');
+              setSettingsTab('appearance');
               setIsSettingsOpen(true);
             }}
           >
-            {user ? (
-              <div className="w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--text-main)] text-[10px] font-bold flex items-center justify-center shadow-sm">
-                {(user.name || user.email).charAt(0).toUpperCase()}
-              </div>
-            ) : (
-              <NavSettingsIcon size={24} active={isSettingsOpen} />
-            )}
-            <span className="text-[10px]">{user ? 'Аккаунт' : 'Опции'}</span>
+            <NavSettingsIcon size={24} active={isSettingsOpen} />
+            <span className="text-[10px]">Настройки</span>
           </button>
         </nav>
 
