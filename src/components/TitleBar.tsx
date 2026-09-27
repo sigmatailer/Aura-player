@@ -31,7 +31,7 @@ const TitleBar: React.FC = () => {
           className={`h-6 px-2.5 mr-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer active:scale-95 ${
             user
               ? 'bg-[var(--bg-surface-hover)] border border-[var(--border-main)] text-[var(--text-main)] hover:border-[var(--accent)]'
-              : 'bg-[var(--accent)] hover:brightness-110 text-[var(--text-main)] shadow-sm'
+              : 'bg-[var(--accent)] hover:brightness-110 text-[var(--accent-contrast)] shadow-sm'
           }`}
           onClick={openAuthModal}
           data-tooltip={user ? 'Профиль Aura' : 'Войти в аккаунт'}
@@ -39,7 +39,7 @@ const TitleBar: React.FC = () => {
         >
           {user ? (
             <>
-              <div className="w-4 h-4 rounded bg-[var(--accent)] text-[var(--text-main)] text-[10px] font-black flex items-center justify-center">
+              <div className="w-4 h-4 rounded bg-[var(--accent)] text-[var(--accent-contrast)] text-[10px] font-black flex items-center justify-center">
                 {(user.name || user.email).charAt(0).toUpperCase()}
               </div>
               <span className="text-[11px] max-w-[120px] truncate">{user.name || user.email.split('@')[0]}</span>

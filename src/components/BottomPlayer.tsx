@@ -88,11 +88,14 @@ const BottomPlayer: React.FC = () => {
         }}
       >
         
-        {/* Left: Cover Art, Track Info & Heart */}
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 max-w-[42%] sm:max-w-[calc(50%-120px)] z-10">
+        {/* Left: Cover Art & Track Info (Responsive) */}
+        <div 
+          className="flex items-center gap-2.5 sm:gap-3 flex-1 md:flex-initial min-w-0 md:max-w-[calc(50%-120px)] z-10 cursor-pointer"
+          onClick={toggleFullscreen}
+        >
           {/* Cover Art */}
-          <div className="w-11 h-11 rounded-xl overflow-hidden bg-[var(--bg-surface-hover)] shrink-0 border border-[var(--border-main)] shadow-sm relative group cursor-pointer"
-            onClick={toggleFullscreen}
+          <div 
+            className="w-11 h-11 rounded-xl overflow-hidden bg-[var(--bg-surface-hover)] shrink-0 border border-[var(--border-main)] shadow-sm relative group cursor-pointer"
             title="Развернуть полноэкранный плеер"
           >
             <MediaCover
@@ -107,26 +110,30 @@ const BottomPlayer: React.FC = () => {
           </div>
 
           {/* Title & Artist */}
-          <div className="flex flex-col min-w-0 justify-center">
+          <div className="flex flex-col min-w-0 justify-center flex-1 pr-1 sm:pr-2">
             <span 
               className="text-[var(--text-main)] text-[13px] font-semibold truncate hover:underline cursor-pointer track-title uppercase tracking-wide leading-tight"
-              onClick={toggleFullscreen}
               title={currentTrack.title}
             >
               {currentTrack.title}
             </span>
-            <ArtistLinks 
-              artist={currentTrack.artist} 
-              className="text-[var(--text-secondary)] text-[11px] truncate transition-colors uppercase tracking-wider leading-tight mt-0.5"
-              linkClassName="hover:text-[var(--text-main)]"
-              viewMode="modal"
-            />
+            <div onClick={(e) => e.stopPropagation()}>
+              <ArtistLinks 
+                artist={currentTrack.artist} 
+                className="text-[var(--text-secondary)] text-[11px] truncate transition-colors uppercase tracking-wider leading-tight mt-0.5"
+                linkClassName="hover:text-[var(--text-main)]"
+                viewMode="modal"
+              />
+            </div>
           </div>
 
-          {/* Like Heart Button */}
+          {/* Like Heart Button (Desktop view only; mobile view renders on right) */}
           <button 
-            onClick={() => toggleLike(currentTrack)}
-            className="text-[var(--text-secondary)] hover:text-[var(--accent)] hover:scale-110 active:scale-95 transition-all p-1 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleLike(currentTrack);
+            }}
+            className="hidden md:flex text-[var(--text-secondary)] hover:text-[var(--accent)] hover:scale-110 active:scale-95 transition-all p-1 shrink-0"
             title={isLiked(currentTrack.id) ? (language === 'ru' ? "Удалить из любимых" : "Remove from favorites") : (language === 'ru' ? "В любимые" : "Add to favorites")}
           >
             <Heart 
@@ -138,8 +145,53 @@ const BottomPlayer: React.FC = () => {
           </button>
         </div>
 
-        {/* Center: Delicate Hollow Playback Controls (Mathematically centered & tightened) */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-4 sm:gap-4.5 z-10">
+        {/* Mobile Right Controls: Heart + Play/Pause + Next */}
+        <div className="flex md:hidden items-center gap-1 sm:gap-2 shrink-0 z-10">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleLike(currentTrack);
+            }}
+            className="text-[var(--text-secondary)] hover:text-[var(--accent)] active:scale-90 transition-all p-1.5 shrink-0"
+            title={isLiked(currentTrack.id) ? (language === 'ru' ? "Удалить из любимых" : "Remove from favorites") : (language === 'ru' ? "В любимые" : "Add to favorites")}
+          >
+            <Heart 
+              size={20} 
+              strokeWidth={1.8}
+              fill={isLiked(currentTrack.id) ? "var(--accent)" : "none"} 
+              color={isLiked(currentTrack.id) ? "var(--accent)" : "currentColor"} 
+            />
+          </button>
+
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePlayPause();
+            }}
+            className="text-[var(--text-main)] hover:text-[var(--accent)] active:scale-90 transition-all p-1.5 flex items-center justify-center shrink-0"
+            title={isPlaying ? (language === 'ru' ? "Пауза" : "Pause") : (language === 'ru' ? "Воспроизведение" : "Play")}
+          >
+            {isPlaying ? (
+              <Pause size={24} strokeWidth={2} />
+            ) : (
+              <Play size={24} strokeWidth={2} className="ml-0.5" />
+            )}
+          </button>
+
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              nextTrack(false);
+            }}
+            className="text-[var(--text-secondary)] hover:text-[var(--text-main)] active:scale-90 transition-all p-1.5 shrink-0"
+            title={language === 'ru' ? "Следующий" : "Next"}
+          >
+            <SkipForward size={21} strokeWidth={1.8} />
+          </button>
+        </div>
+
+        {/* Desktop Center: Delicate Hollow Playback Controls */}
+        <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-4 sm:gap-4.5 z-10">
           <button 
             onClick={toggleRepeat}
             className={`transition-colors p-1 relative ${repeatMode !== 'off' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'}`}
@@ -188,8 +240,8 @@ const BottomPlayer: React.FC = () => {
           </button>
         </div>
 
-        {/* Right: Pill Capsule with Expandable Volume Mixer */}
-        <div className="flex items-center justify-end shrink-0 z-10">
+        {/* Desktop Right: Pill Capsule with Expandable Volume Mixer */}
+        <div className="hidden md:flex items-center justify-end shrink-0 z-10">
           <div 
             ref={volumeContainerRef}
             className="h-8.5 px-2.5 rounded-full bg-[var(--bg-main)]/60 border border-white/[0.05] flex items-center gap-2 transition-all shadow-inner"

@@ -1915,7 +1915,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                       <button
                         onClick={handleStartYandexDeviceAuth}
                         disabled={isGettingCode}
-                        className="py-3 px-5 rounded-[14px] bg-[var(--accent)] hover:brightness-110 text-white text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="py-3 px-5 rounded-[14px] bg-[var(--accent)] hover:brightness-110 text-[var(--accent-contrast)] text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         {isGettingCode ? (
                           <>
@@ -1957,7 +1957,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                           const url = `https://oauth.yandex.ru/device?user_code=${deviceAuthInfo.user_code}`;
                           try { openUrl(url); } catch { window.open(url, '_blank'); }
                         }}
-                        className="w-full py-2.5 px-4 bg-[var(--accent)] hover:brightness-110 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95"
+                        className="w-full py-2.5 px-4 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-contrast)] rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95"
                       >
                         <ExternalLink size={14} />
                         <span>Открыть страницу ya.ru/device</span>

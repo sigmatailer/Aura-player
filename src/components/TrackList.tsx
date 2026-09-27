@@ -4,12 +4,182 @@ import { useCollectionStore } from '../store/useCollectionStore';
 import { useThemeStore, isVideoUrl } from '../store/useThemeStore';
 import { useCacheStore } from '../store/useCacheStore';
 import { Image as ImageIcon, Heart, GripVertical, Check, PlusCircle, Minus, Trash2 } from 'lucide-react';
-import { Reorder } from 'framer-motion';
+import { Reorder, useDragControls } from 'framer-motion';
 import { PlaylistPopover } from './PlaylistPopover';
 import { TrackOptionsPopover } from './TrackOptionsPopover';
 import { ArtistLinks } from './ArtistLinks';
 import { PlayingIndicator } from './PlayingIndicator';
 import { Track } from '../types';
+
+interface QueueTrackRowProps {
+  track: Track;
+  index: number;
+  isActive: boolean;
+  isTrackLiked: boolean;
+  isDragging: boolean;
+  coverUrl: string;
+  coverSpeed: number;
+  isPlaying: boolean;
+  cachedTracks: Record<string, any>;
+  onTrackClick: (index: number) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  toggleLike: (track: Track) => void;
+  removeTrack: (id: string) => void;
+}
+
+const QueueTrackRow: React.FC<QueueTrackRowProps> = ({
+  track,
+  index,
+  isActive,
+  isTrackLiked,
+  isDragging,
+  coverUrl,
+  coverSpeed,
+  isPlaying,
+  cachedTracks,
+  onTrackClick,
+  onDragStart,
+  onDragEnd,
+  toggleLike,
+  removeTrack,
+}) => {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      key={track.id}
+      value={track}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={() => onTrackClick(index)}
+      whileDrag={{
+        scale: 0.995,
+        zIndex: 50,
+        cursor: 'grabbing'
+      }}
+      transition={{
+        layout: { type: 'spring', damping: 26, stiffness: 280 }
+      }}
+      className={`group flex items-center justify-between py-2 px-3 mb-1.5 rounded-xl select-none cursor-pointer transition-all ${
+        isDragging
+          ? 'transition-none bg-black/70 backdrop-blur-xl border border-[var(--accent)] shadow-2xl ring-1 ring-[var(--accent)]/50'
+          : isActive 
+            ? 'bg-white/[0.04] border border-[var(--accent)]/60 shadow-sm' 
+            : 'bg-transparent border border-white/[0.04] hover:border-white/15 hover:bg-white/[0.02]'
+      }`}
+    >
+      {/* Left side: Drag handle + Thumbnail + Details */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div 
+          className="text-[var(--text-secondary)] opacity-50 md:opacity-0 md:group-hover:opacity-40 hover:!opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-1.5 transition-opacity shrink-0 -ml-1 touch-none"
+          onPointerDown={(e) => dragControls.start(e)}
+          title="Перетащить трек"
+        >
+          <GripVertical size={16} />
+        </div>
+
+        {/* Album Cover Thumbnail */}
+        <div 
+          className={`relative w-11 h-11 overflow-hidden shrink-0 bg-[#161616] rounded-lg group/cover ring-1 ${isActive ? 'ring-[var(--accent)]/50' : 'ring-[var(--border-main)]'}`}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {isVideoUrl(coverUrl) ? (
+            <video 
+              src={coverUrl} 
+              autoPlay 
+              loop 
+              muted 
+              playsInline 
+              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = coverSpeed; }}
+              className="w-full h-full object-cover" 
+            />
+          ) : (
+            <img src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
+          )}
+          
+          {/* Animated equalizer bars on active track */}
+          {isActive && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <PlayingIndicator size="sm" isPaused={!isPlaying} barColor="bg-white" />
+            </div>
+          )}
+        </div>
+        
+        {/* Track Title and Artist */}
+        <div className="flex flex-col truncate min-w-0 pr-2">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className={`font-semibold text-[15px] truncate tracking-wide leading-snug ${isActive ? 'text-[var(--accent)]' : 'text-[#e0e0e0] group-hover:text-white'}`}>
+              {track.title}
+            </span>
+            {cachedTracks[track.id] && (
+              <span className="flex items-center gap-0.5 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[9px] font-semibold shrink-0" title="Доступен оффлайн">
+                <Check size={9} strokeWidth={3} />
+                КЭШ
+              </span>
+            )}
+          </div>
+          <div className="text-[12px] text-[#777] truncate mt-0.5">
+            <ArtistLinks 
+              artist={track.artist}
+              className="text-[12px] text-[#777] truncate hover:text-[#aaa] transition-colors"
+              linkClassName="hover:text-white"
+              viewMode="modal"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Right side: Actions & Duration */}
+      <div 
+        className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2 sm:ml-4"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className={`flex items-center gap-1 sm:gap-1.5 transition-opacity ${isActive ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}>
+          {/* Three dots options (cache, cache similar, similar to queue) */}
+          <TrackOptionsPopover track={track} direction="up" />
+
+          {/* Heart button */}
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleLike(track);
+            }}
+            className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isTrackLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+            title={isTrackLiked ? "Убрать из любимых" : "В любимые"}
+          >
+            <Heart size={16} fill={isTrackLiked ? "currentColor" : "none"} />
+          </button>
+
+          {/* PlusCircle (Add to playlist) */}
+          <PlaylistPopover 
+            track={track} 
+            icon={<PlusCircle size={16} strokeWidth={1.5} className="text-[#777] hover:text-white transition-colors" />} 
+          />
+
+          {/* Minus (Remove from queue) */}
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              removeTrack(track.id);
+            }}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-[#777] hover:text-[var(--accent)] transition-colors"
+            title="Удалить из очереди"
+          >
+            <Minus size={16} strokeWidth={1.8} />
+          </button>
+        </div>
+
+        {/* Duration */}
+        <span className="text-xs text-[#666] font-mono min-w-[36px] text-right">
+          {Math.floor(track.duration / 60)}:{(Math.round(track.duration) % 60).toString().padStart(2, '0')}
+        </span>
+      </div>
+    </Reorder.Item>
+  );
+};
 
 const TrackList: React.FC = () => {
   const { queue, currentTrackIndex, isPlaying, playTrack, togglePlayPause, removeTrack, clearQueue } = usePlayerStore();
@@ -110,134 +280,23 @@ const TrackList: React.FC = () => {
             const coverUrl = track.customCoverPath || track.originalCoverUrl || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=200&auto=format&fit=crop';
             
             return (
-              <Reorder.Item
+              <QueueTrackRow
                 key={track.id}
-                value={track}
+                track={track}
+                index={index}
+                isActive={isActive}
+                isTrackLiked={isTrackLiked}
+                isDragging={isDragging}
+                coverUrl={coverUrl}
+                coverSpeed={coverSpeed}
+                isPlaying={isPlaying}
+                cachedTracks={cachedTracks}
+                onTrackClick={handleTrackClick}
                 onDragStart={() => setDraggedTrackId(track.id)}
                 onDragEnd={() => setDraggedTrackId(null)}
-                onClick={() => handleTrackClick(index)}
-                whileDrag={{
-                  scale: 0.995,
-                  zIndex: 50,
-                  cursor: 'grabbing'
-                }}
-                transition={{
-                  layout: { type: 'spring', damping: 26, stiffness: 280 }
-                }}
-                className={`group flex items-center justify-between py-2 px-3 mb-1.5 rounded-xl select-none cursor-pointer transition-all ${
-                  isDragging
-                    ? 'transition-none bg-black/70 backdrop-blur-xl border border-[var(--accent)] shadow-2xl ring-1 ring-[var(--accent)]/50'
-                    : isActive 
-                      ? 'bg-white/[0.04] border border-[var(--accent)]/60 shadow-sm' 
-                      : 'bg-transparent border border-white/[0.04] hover:border-white/15 hover:bg-white/[0.02]'
-                }`}
-              >
-                {/* Left side: Drag handle + Thumbnail + Details */}
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div 
-                    className="text-[var(--text-secondary)] opacity-40 md:opacity-0 md:group-hover:opacity-40 hover:!opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-1 transition-opacity shrink-0 -ml-1"
-                    title="Перетащить трек"
-                  >
-                    <GripVertical size={16} />
-                  </div>
-
-                  {/* Album Cover Thumbnail */}
-                  <div 
-                    className={`relative w-11 h-11 overflow-hidden shrink-0 bg-[#161616] rounded-lg group/cover ring-1 ${isActive ? 'ring-[var(--accent)]/50' : 'ring-[var(--border-main)]'}`}
-                    onPointerDown={(e) => e.stopPropagation()}
-                  >
-                    {isVideoUrl(coverUrl) ? (
-                      <video 
-                        src={coverUrl} 
-                        autoPlay 
-                        loop 
-                        muted 
-                        playsInline 
-                        onLoadedMetadata={(e) => { e.currentTarget.playbackRate = coverSpeed; }}
-                        className="w-full h-full object-cover" 
-                      />
-                    ) : (
-                      <img src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
-                    )}
-                    
-                    {/* Animated equalizer bars on active track */}
-                    {isActive && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <PlayingIndicator size="sm" isPaused={!isPlaying} barColor="bg-white" />
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Track Title and Artist */}
-                  <div className="flex flex-col truncate min-w-0 pr-2">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className={`font-semibold text-[15px] truncate tracking-wide leading-snug ${isActive ? 'text-[var(--accent)]' : 'text-[#e0e0e0] group-hover:text-white'}`}>
-                        {track.title}
-                      </span>
-                      {cachedTracks[track.id] && (
-                        <span className="flex items-center gap-0.5 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[9px] font-semibold shrink-0" title="Доступен оффлайн">
-                          <Check size={9} strokeWidth={3} />
-                          КЭШ
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[12px] text-[#777] truncate mt-0.5">
-                      <ArtistLinks 
-                        artist={track.artist}
-                        className="text-[12px] text-[#777] truncate hover:text-[#aaa] transition-colors"
-                        linkClassName="hover:text-white"
-                        viewMode="modal"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right side: Actions & Duration */}
-                <div 
-                  className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2 sm:ml-4"
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <div className={`flex items-center gap-1 sm:gap-1.5 transition-opacity ${isActive ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}>
-                    {/* Three dots options (cache, cache similar, similar to queue) */}
-                    <TrackOptionsPopover track={track} direction="up" />
-
-                    {/* Heart button */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleLike(track);
-                      }}
-                      className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isTrackLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
-                      title={isTrackLiked ? "Убрать из любимых" : "В любимые"}
-                    >
-                      <Heart size={16} fill={isTrackLiked ? "currentColor" : "none"} />
-                    </button>
-
-                    {/* PlusCircle (Add to playlist) */}
-                    <PlaylistPopover 
-                      track={track} 
-                      icon={<PlusCircle size={16} strokeWidth={1.5} className="text-[#777] hover:text-white transition-colors" />} 
-                    />
-
-                    {/* Minus (Remove from queue) */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeTrack(track.id);
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-white/5 text-[#777] hover:text-[var(--accent)] transition-colors"
-                      title="Удалить из очереди"
-                    >
-                      <Minus size={16} strokeWidth={1.8} />
-                    </button>
-                  </div>
-
-                  {/* Duration */}
-                  <span className="text-xs text-[#666] font-mono min-w-[36px] text-right">
-                    {Math.floor(track.duration / 60)}:{(Math.round(track.duration) % 60).toString().padStart(2, '0')}
-                  </span>
-                </div>
-              </Reorder.Item>
+                toggleLike={toggleLike}
+                removeTrack={removeTrack}
+              />
             );
           })}
         </Reorder.Group>

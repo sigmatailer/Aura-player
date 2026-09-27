@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { Heart, Plus, Play, Pause, Trash2, Cloud, Pencil, Image as ImageIcon, FolderPlus, FilePlus, Check, GripVertical, ChevronLeft, Minus } from 'lucide-react';
-import { Reorder } from 'framer-motion';
+import { Reorder, useDragControls } from 'framer-motion';
 import { PlaylistPopover } from './PlaylistPopover';
 import { TrackOptionsPopover } from './TrackOptionsPopover';
 import { CollectionOptionsPopover } from './CollectionOptionsPopover';
@@ -19,6 +19,101 @@ import { PlayingIndicator } from './PlayingIndicator';
 import { Track } from '../types';
 import { pickImage } from '../utils/mediaPicker';
 import { MediaCover } from './MediaCover';
+
+const CollectionTrackItem: React.FC<{
+  track: Track;
+  isActive: boolean;
+  isDragging: boolean;
+  coverUrl: string;
+  isPlaying: boolean;
+  cached: boolean;
+  onClick: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  children: React.ReactNode;
+}> = ({
+  track,
+  isActive,
+  isDragging,
+  coverUrl,
+  isPlaying,
+  cached,
+  onClick,
+  onDragStart,
+  onDragEnd,
+  children,
+}) => {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      key={track.id}
+      value={track}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onClick}
+      whileDrag={{
+        scale: 0.992,
+        zIndex: 50,
+        cursor: 'grabbing'
+      }}
+      transition={{
+        layout: { type: 'spring', damping: 26, stiffness: 280 }
+      }}
+      className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
+        isDragging
+          ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
+          : isActive 
+            ? 'transition-colors duration-150 bg-[var(--bg-surface-hover)]/80 border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30 backdrop-blur-sm' 
+            : 'transition-colors duration-150 bg-transparent border-[var(--border-main)] hover:bg-[var(--bg-surface-hover)]/40'
+      }`}
+    >
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div 
+          className="text-[var(--text-secondary)] opacity-50 md:opacity-30 group-hover:opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-1.5 transition-opacity shrink-0 touch-none"
+          onPointerDown={(e) => dragControls.start(e)}
+          title="Перетащить трек"
+        >
+          <GripVertical size={16} />
+        </div>
+        <div 
+          className="relative w-10 h-10 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] rounded-lg group/cover"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <MediaCover src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
+          <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${isActive ? 'opacity-100 bg-black/40' : 'opacity-0 group-hover/cover:opacity-100 bg-black/40'}`}>
+            {isActive ? <PlayingIndicator isPaused={!isPlaying} /> : <div className="w-6 h-6 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md"><Play size={10} fill="currentColor" className="text-[var(--accent-contrast)] ml-0.5" /></div>}
+          </div>
+        </div>
+        <div className="flex flex-col truncate min-w-0">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className={`font-medium text-[14px] truncate track-title ${isActive ? 'text-[var(--accent)] font-semibold' : 'text-[#e0e0e0] group-hover:text-[var(--text-main)]'}`}>{track.title}</span>
+            {cached && (
+              <span className="flex items-center gap-0.5 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" title="Доступен оффлайн (в кэше)">
+                <Check size={10} strokeWidth={3} />
+                КЭШ
+              </span>
+            )}
+          </div>
+          <ArtistLinks 
+            artist={track.artist}
+            className="text-[12px] text-[var(--text-secondary)] truncate transition-colors uppercase tracking-wider"
+            linkClassName="hover:text-[var(--text-main)]"
+            viewMode="modal"
+          />
+        </div>
+      </div>
+      <div 
+        className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </Reorder.Item>
+  );
+};
 
 const ActionPills = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center gap-2">
@@ -526,77 +621,28 @@ export const Collections: React.FC = () => {
                   const coverUrl = track.customCoverPath || track.originalCoverUrl || defaultCoverUrl;
                   const isLiked = useCollectionStore.getState().isLiked(track.id);
                   return (
-                    <Reorder.Item
+                    <CollectionTrackItem
                       key={track.id}
-                      value={track}
+                      track={track}
+                      isActive={isActive}
+                      isDragging={isDragging}
+                      coverUrl={coverUrl}
+                      isPlaying={isPlaying}
+                      cached={!!cachedTracks[track.id]}
+                      onClick={() => { if (isActive) togglePlayPause(); else { playContext(likedTracks, index); } }}
                       onDragStart={() => setDraggedTrackId(track.id)}
                       onDragEnd={() => setDraggedTrackId(null)}
-                      onClick={() => { if (isActive) togglePlayPause(); else { playContext(likedTracks, index); } }}
-                      whileDrag={{
-                        scale: 0.992,
-                        zIndex: 50,
-                        cursor: 'grabbing'
-                      }}
-                      transition={{
-                        layout: { type: 'spring', damping: 26, stiffness: 280 }
-                      }}
-                      className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
-                        isDragging
-                          ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
-                          : isActive 
-                            ? 'transition-colors duration-150 bg-[var(--bg-surface-hover)]/80 border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30 backdrop-blur-sm' 
-                            : 'transition-colors duration-150 bg-transparent border-[var(--border-main)] hover:bg-[var(--bg-surface-hover)]/40'
-                      }`}
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div 
-                          className="text-[var(--text-secondary)] opacity-30 group-hover:opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-1 transition-opacity shrink-0"
-                          title="Перетащить трек"
-                        >
-                          <GripVertical size={16} />
-                        </div>
-                        <div 
-                          className="relative w-10 h-10 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] rounded-lg group/cover"
-                          onPointerDown={(e) => e.stopPropagation()}
-                        >
-                          <MediaCover src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
-                          <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${isActive ? 'opacity-100 bg-black/40' : 'opacity-0 group-hover/cover:opacity-100 bg-black/40'}`}>
-                            {isActive ? <PlayingIndicator isPaused={!isPlaying} /> : <div className="w-6 h-6 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md"><Play size={10} fill="currentColor" className="text-[var(--accent-contrast)] ml-0.5" /></div>}
-                          </div>
-                        </div>
-                        <div className="flex flex-col truncate min-w-0">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className={`font-medium text-[14px] truncate track-title ${isActive ? 'text-[var(--accent)] font-semibold' : 'text-[#e0e0e0] group-hover:text-[var(--text-main)]'}`}>{track.title}</span>
-                            {cachedTracks[track.id] && (
-                              <span className="flex items-center gap-0.5 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" title="Доступен оффлайн (в кэше)">
-                                <Check size={10} strokeWidth={3} />
-                                КЭШ
-                              </span>
-                            )}
-                          </div>
-                          <ArtistLinks 
-                            artist={track.artist}
-                            className="text-[12px] text-[var(--text-secondary)] truncate transition-colors uppercase tracking-wider"
-                            linkClassName="hover:text-[var(--text-main)]"
-                            viewMode="modal"
-                          />
-                        </div>
-                      </div>
-                      <div 
-                        className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                        onPointerDown={(e) => e.stopPropagation()}
-                      > 
-                        <TrackOptionsPopover track={track} /> 
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().toggleLike(track); }} 
-                          className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
-                          title={isLiked ? "Убрать из любимых" : "В любимые"}
-                        >
-                          <Heart size={16} strokeWidth={1.7} fill={isLiked ? "currentColor" : "none"} />
-                        </button>
-                        <PlaylistPopover track={track} />
-                      </div>
-                    </Reorder.Item>
+                      <TrackOptionsPopover track={track} /> 
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().toggleLike(track); }} 
+                        className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                        title={isLiked ? "Убрать из любимых" : "В любимые"}
+                      >
+                        <Heart size={16} strokeWidth={1.7} fill={isLiked ? "currentColor" : "none"} />
+                      </button>
+                      <PlaylistPopover track={track} />
+                    </CollectionTrackItem>
                   );
                 })}
               </Reorder.Group>
@@ -667,84 +713,35 @@ export const Collections: React.FC = () => {
                   const coverUrl = track.customCoverPath || track.originalCoverUrl || defaultCoverUrl;
                   const isLiked = useCollectionStore.getState().isLiked(track.id);
                   return (
-                    <Reorder.Item
+                    <CollectionTrackItem
                       key={track.id}
-                      value={track}
+                      track={track}
+                      isActive={isActive}
+                      isDragging={isDragging}
+                      coverUrl={coverUrl}
+                      isPlaying={isPlaying}
+                      cached={!!cachedTracks[track.id]}
+                      onClick={() => { if (isActive) togglePlayPause(); else { playContext(downloadedTracks, index); } }}
                       onDragStart={() => setDraggedTrackId(track.id)}
                       onDragEnd={() => setDraggedTrackId(null)}
-                      onClick={() => { if (isActive) togglePlayPause(); else { playContext(downloadedTracks, index); } }}
-                      whileDrag={{
-                        scale: 0.992,
-                        zIndex: 50,
-                        cursor: 'grabbing'
-                      }}
-                      transition={{
-                        layout: { type: 'spring', damping: 26, stiffness: 280 }
-                      }}
-                      className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
-                        isDragging
-                          ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
-                          : isActive 
-                            ? 'transition-colors duration-150 bg-[var(--bg-surface-hover)]/80 border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30 backdrop-blur-sm' 
-                            : 'transition-colors duration-150 bg-transparent border-[var(--border-main)] hover:bg-[var(--bg-surface-hover)]/40'
-                      }`}
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div 
-                          className="text-[var(--text-secondary)] opacity-30 group-hover:opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-1 transition-opacity shrink-0"
-                          title="Перетащить трек"
-                        >
-                          <GripVertical size={16} />
-                        </div>
-                        <div 
-                          className="relative w-10 h-10 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] rounded-lg group/cover"
-                          onPointerDown={(e) => e.stopPropagation()}
-                        >
-                          <MediaCover src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
-                          <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${isActive ? 'opacity-100 bg-black/40' : 'opacity-0 group-hover/cover:opacity-100 bg-black/40'}`}>
-                            {isActive ? <PlayingIndicator isPaused={!isPlaying} /> : <div className="w-6 h-6 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md"><Play size={10} fill="currentColor" className="text-[var(--accent-contrast)] ml-0.5" /></div>}
-                          </div>
-                        </div>
-                        <div className="flex flex-col truncate min-w-0">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className={`font-medium text-[14px] truncate track-title ${isActive ? 'text-[var(--accent)] font-semibold' : 'text-[#e0e0e0] group-hover:text-[var(--text-main)]'}`}>{track.title}</span>
-                            {cachedTracks[track.id] && (
-                              <span className="flex items-center gap-0.5 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" title="Доступен оффлайн (в кэше)">
-                                <Check size={10} strokeWidth={3} />
-                                КЭШ
-                              </span>
-                            )}
-                          </div>
-                          <ArtistLinks 
-                            artist={track.artist}
-                            className="text-[12px] text-[var(--text-secondary)] truncate transition-colors uppercase tracking-wider"
-                            linkClassName="hover:text-[var(--text-main)]"
-                            viewMode="modal"
-                          />
-                        </div>
-                      </div>
-                      <div 
-                        className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                        onPointerDown={(e) => e.stopPropagation()}
-                      > 
-                        <TrackOptionsPopover track={track} /> 
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().toggleLike(track); }} 
-                          className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
-                          title={isLiked ? "Убрать из любимых" : "В любимые"}
-                        >
-                          <Heart size={16} strokeWidth={1.7} fill={isLiked ? "currentColor" : "none"} />
-                        </button>
-                        <PlaylistPopover track={track} />
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().removeDownloadedTrack(track.id); }} 
-                          className="p-1.5 rounded-lg hover:bg-white/5 text-[#777] hover:text-[var(--accent)] transition-colors" 
-                          title="Удалить"
-                        >
-                          <Minus size={16} strokeWidth={1.8} />
-                        </button>
-                      </div>
-                    </Reorder.Item>
+                      <TrackOptionsPopover track={track} /> 
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().toggleLike(track); }} 
+                        className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                        title={isLiked ? "Убрать из любимых" : "В любимые"}
+                      >
+                        <Heart size={16} strokeWidth={1.7} fill={isLiked ? "currentColor" : "none"} />
+                      </button>
+                      <PlaylistPopover track={track} />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().removeDownloadedTrack(track.id); }} 
+                        className="p-1.5 rounded-lg hover:bg-white/5 text-[#777] hover:text-[var(--accent)] transition-colors" 
+                        title="Удалить"
+                      >
+                        <Minus size={16} strokeWidth={1.8} />
+                      </button>
+                    </CollectionTrackItem>
                   );
                 })}
               </Reorder.Group>
@@ -852,84 +849,35 @@ export const Collections: React.FC = () => {
                   const coverUrl = track.customCoverPath || track.originalCoverUrl || defaultCoverUrl;
                   const isLiked = useCollectionStore.getState().isLiked(track.id);
                   return (
-                    <Reorder.Item
+                    <CollectionTrackItem
                       key={track.id}
-                      value={track}
+                      track={track}
+                      isActive={isActive}
+                      isDragging={isDragging}
+                      coverUrl={coverUrl}
+                      isPlaying={isPlaying}
+                      cached={!!cachedTracks[track.id]}
+                      onClick={() => { if (isActive) togglePlayPause(); else { playContext(playlist.tracks, index); } }}
                       onDragStart={() => setDraggedTrackId(track.id)}
                       onDragEnd={() => setDraggedTrackId(null)}
-                      onClick={() => { if (isActive) togglePlayPause(); else { playContext(playlist.tracks, index); } }}
-                      whileDrag={{
-                        scale: 0.992,
-                        zIndex: 50,
-                        cursor: 'grabbing'
-                      }}
-                      transition={{
-                        layout: { type: 'spring', damping: 26, stiffness: 280 }
-                      }}
-                      className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
-                        isDragging
-                          ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
-                          : isActive 
-                            ? 'transition-colors duration-150 bg-[var(--bg-surface-hover)]/80 border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30 backdrop-blur-sm' 
-                            : 'transition-colors duration-150 bg-transparent border-[var(--border-main)] hover:bg-[var(--bg-surface-hover)]/40'
-                      }`}
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div 
-                          className="text-[var(--text-secondary)] opacity-30 group-hover:opacity-100 hover:text-[var(--accent)] cursor-grab active:cursor-grabbing p-1 transition-opacity shrink-0"
-                          title="Перетащить трек"
-                        >
-                          <GripVertical size={16} />
-                        </div>
-                        <div 
-                          className="relative w-10 h-10 overflow-hidden shrink-0 bg-[var(--bg-surface-hover)] rounded-lg group/cover"
-                          onPointerDown={(e) => e.stopPropagation()}
-                        >
-                          <MediaCover src={coverUrl} alt={track.title} className="w-full h-full object-cover" />
-                          <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${isActive ? 'opacity-100 bg-black/40' : 'opacity-0 group-hover/cover:opacity-100 bg-black/40'}`}>
-                            {isActive ? <PlayingIndicator isPaused={!isPlaying} /> : <div className="w-6 h-6 bg-[var(--accent)] rounded-full flex items-center justify-center shadow-md"><Play size={10} fill="currentColor" className="text-[var(--accent-contrast)] ml-0.5" /></div>}
-                          </div>
-                        </div>
-                        <div className="flex flex-col truncate min-w-0">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className={`font-medium text-[14px] truncate track-title ${isActive ? 'text-[var(--accent)] font-semibold' : 'text-[#e0e0e0] group-hover:text-[var(--text-main)]'}`}>{track.title}</span>
-                            {cachedTracks[track.id] && (
-                              <span className="flex items-center gap-0.5 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" title="Доступен оффлайн (в кэше)">
-                                <Check size={10} strokeWidth={3} />
-                                КЭШ
-                              </span>
-                            )}
-                          </div>
-                          <ArtistLinks 
-                            artist={track.artist}
-                            className="text-[12px] text-[var(--text-secondary)] truncate transition-colors uppercase tracking-wider"
-                            linkClassName="hover:text-[var(--text-main)]"
-                            viewMode="modal"
-                          />
-                        </div>
-                      </div>
-                      <div 
-                        className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                        onPointerDown={(e) => e.stopPropagation()}
-                      > 
-                        <TrackOptionsPopover track={track} /> 
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().toggleLike(track); }} 
-                          className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
-                          title={isLiked ? "Убрать из любимых" : "В любимые"}
-                        >
-                          <Heart size={16} strokeWidth={1.7} fill={isLiked ? "currentColor" : "none"} />
-                        </button>
-                        <PlaylistPopover track={track} />
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().removeTrackFromPlaylist(playlist.id, track.id); }} 
-                          className="p-1.5 rounded-lg hover:bg-white/5 text-[#777] hover:text-[var(--accent)] transition-colors" 
-                          title="Удалить из плейлиста"
-                        >
-                          <Minus size={16} strokeWidth={1.8} />
-                        </button>
-                      </div>
-                    </Reorder.Item>
+                      <TrackOptionsPopover track={track} /> 
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().toggleLike(track); }} 
+                        className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${isLiked ? 'text-[var(--accent)]' : 'text-[#777] hover:text-white'}`}
+                        title={isLiked ? "Убрать из любимых" : "В любимые"}
+                      >
+                        <Heart size={16} strokeWidth={1.7} fill={isLiked ? "currentColor" : "none"} />
+                      </button>
+                      <PlaylistPopover track={track} />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); useCollectionStore.getState().removeTrackFromPlaylist(playlist.id, track.id); }} 
+                        className="p-1.5 rounded-lg hover:bg-white/5 text-[#777] hover:text-[var(--accent)] transition-colors" 
+                        title="Удалить из плейлиста"
+                      >
+                        <Minus size={16} strokeWidth={1.8} />
+                      </button>
+                    </CollectionTrackItem>
                   );
                 })}
               </Reorder.Group>

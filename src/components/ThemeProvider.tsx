@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useThemeStore } from '../store/useThemeStore';
+import { useThemeStore, getContrastColor } from '../store/useThemeStore';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { getActiveTheme, currentThemeId, fontId, trackFontId, getActiveFont, getActiveTrackFont } = useThemeStore();
@@ -18,6 +18,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.style.setProperty('--border-main', theme.colors.borderMain);
     root.style.setProperty('--accent', theme.colors.accent);
     root.style.setProperty('--accent-hover', theme.colors.accentHover);
+    
+    const contrastColor = getContrastColor(theme.colors.accent);
+    root.style.setProperty('--accent-contrast', contrastColor);
     
     root.style.setProperty('--font-family', font.family);
     root.style.setProperty('--font-track', trackFont.family === 'inherit' ? font.family : trackFont.family);

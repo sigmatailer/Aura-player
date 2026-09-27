@@ -674,7 +674,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
           </AnimatePresence>
         </form>
 
-        <div className={`flex items-center gap-2 justify-center transition-opacity duration-500 ${isHomeState && !query.trim() ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
+        <div className={`w-full flex items-center gap-2 overflow-x-auto scrollbar-hide py-1 px-1 sm:justify-center justify-start transition-opacity duration-500 ${isHomeState && !query.trim() ? 'opacity-0 h-0 overflow-hidden pointer-events-none' : 'opacity-100 h-auto'}`}>
           {[
             { type: 'track' as SearchType, label: 'Треки', icon: <Music size={13} /> },
             { type: 'album' as SearchType, label: 'Альбомы', icon: <Disc3 size={13} /> },
@@ -686,7 +686,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
               <button 
                 key={tab.type}
                 onClick={() => setSearchType(tab.type)}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                   isActive 
                     ? 'bg-white text-black shadow-md scale-102 hover:bg-white/95' 
                     : 'bg-white/[0.05] hover:bg-white/[0.1] text-white/70 hover:text-white border border-white/[0.08]'
@@ -819,13 +819,13 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 transition={{ duration: 0.18 }}
                 key={result.id}
                 onClick={() => handlePlayResult(result)}
-                className={`group flex items-center justify-between p-2.5 pr-4 mb-2 rounded-[18px] border cursor-pointer transition-all duration-200 select-none ${
+                className={`group flex items-center justify-between p-2.5 pr-3 sm:pr-4 mb-2 rounded-[18px] border cursor-pointer transition-all duration-200 select-none w-full max-w-full overflow-hidden ${
                   isQueuedAndActive 
                     ? 'bg-white/[0.08] border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30' 
                     : 'bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.05] hover:border-white/[0.12]'
                 }`}
               >
-                <div className="flex items-center gap-4 flex-1">
+                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                   <div className={`relative w-12 h-12 overflow-hidden shrink-0 bg-black/40 shadow-sm ${
                     isArtist ? 'rounded-full border border-white/10' : 'rounded-[14px]'
                   }`}>
@@ -857,7 +857,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col truncate">
+                  <div className="flex flex-col truncate min-w-0 pr-1 sm:pr-2">
                     <span className={`font-medium text-[15px] truncate ${isQueuedAndActive ? 'text-[var(--accent)]' : 'text-[#cccccc] group-hover:text-[var(--text-main)]'}`}>
                       {result.title}
                     </span>
@@ -886,13 +886,13 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 </div>
 
                 {isArtist && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         useArtistStore.getState().openArtist(result.title, result.id, 'modal');
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-surface-hover)] border border-[var(--border-main)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all shadow-sm group/btn"
+                      className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-surface-hover)] border border-[var(--border-main)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all shadow-sm group/btn shrink-0 whitespace-nowrap"
                     >
                       <span>Карточка артиста</span>
                       <ChevronRight size={13} className="text-[var(--text-secondary)] group-hover/btn:text-[var(--accent)] group-hover/btn:translate-x-0.5 transition-transform" />

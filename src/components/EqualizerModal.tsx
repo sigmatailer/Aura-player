@@ -133,7 +133,7 @@ export const EqualizerModal: React.FC = () => {
               <button
                 key={p.id}
                 onClick={() => setEqPreset(p.id, p.bands, p.preAmp)}
-                className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${eqPreset === p.id ? 'bg-[var(--accent)] text-[var(--text-main)]' : 'bg-[var(--bg-main)] border border-[var(--border-main)] text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:border-[var(--accent)]'}`}
+                className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${eqPreset === p.id ? 'bg-[var(--accent)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-main)] border border-[var(--border-main)] text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:border-[var(--accent)]'}`}
               >
                 {p.name}
               </button>

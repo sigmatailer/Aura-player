@@ -123,6 +123,24 @@ export class AudioService {
       }
     }
 
+    // Global listener for Android native media notification actions
+    if (typeof window !== 'undefined') {
+      (window as any).__AURA_ON_MEDIA_ACTION__ = (action: string, val?: number) => {
+        const store = usePlayerStore.getState();
+        if (action === 'play_pause') {
+          store.togglePlayPause();
+        } else if (action === 'next') {
+          store.nextTrack(false);
+        } else if (action === 'prev') {
+          store.prevTrack();
+        } else if (action === 'repeat') {
+          store.toggleRepeat();
+        } else if (action === 'seek' && typeof val === 'number') {
+          store.setProgress(val);
+        }
+      };
+    }
+
     this.audio.addEventListener('stalled', () => {
       const state = usePlayerStore.getState();
       if (!this.isLoadingTrack && state.isPlaying && this.audio.paused && this.audio.src && this.audio.readyState >= 2) {
@@ -193,6 +211,14 @@ export class AudioService {
         }
         if (state.eqPreAmp !== prevState.eqPreAmp) {
           this.setPreAmp(state.eqPreAmp);
+        }
+      }
+
+      // Sync Repeat Mode change to native Android notification & MediaSession
+      if (state.repeatMode !== prevState.repeatMode) {
+        const curTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+        if (curTrack) {
+          this.updateMediaSession(curTrack, state.isPlaying);
         }
       }
 
@@ -859,6 +885,9 @@ export class AudioService {
     if (!track) {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
+      if (typeof window !== 'undefined' && (window as any).AuraAndroidBridge) {
+        try { (window as any).AuraAndroidBridge.stopMedia(); } catch (e) {}
+      }
       return;
     }
 
@@ -892,6 +921,26 @@ export class AudioService {
       });
     } catch (e) {
       console.warn('Failed to update MediaMetadata:', e);
+    }
+
+    // Update native Android notification bridge if running on Android
+    if (typeof window !== 'undefined' && (window as any).AuraAndroidBridge) {
+      try {
+        const repeatMode = usePlayerStore.getState().repeatMode || 'off';
+        const dur = this.audio.duration || track.duration || 0;
+        const pos = this.audio.currentTime || 0;
+        (window as any).AuraAndroidBridge.updateMedia(
+          track.title || 'Unknown Title',
+          track.artist || 'Unknown Artist',
+          rawCover,
+          isPlaying,
+          dur,
+          pos,
+          repeatMode
+        );
+      } catch (e) {
+        console.warn('AuraAndroidBridge call error:', e);
+      }
     }
 
     this.updateMediaSessionPosition();

@@ -31,7 +31,7 @@ const TopPlayer: React.FC = () => {
   return (
     <div className="w-full flex flex-col md:flex-row items-center gap-4 sm:gap-6 md:gap-8 lg:gap-12 mt-0 bg-transparent select-none">
       {/* Cover Art - Left (or Top on mobile) - Significantly enlarged */}
-      <div className="w-[270px] h-[270px] sm:w-[320px] sm:h-[320px] md:w-[340px] md:h-[340px] lg:w-[370px] lg:h-[370px] shrink-0 rounded-[26px] overflow-hidden bg-transparent shadow-2xl shadow-black/80 border border-[var(--border-main)] relative group transition-all duration-300">
+      <div className="w-[84vw] max-w-[360px] h-auto aspect-square sm:w-[360px] sm:h-[360px] md:w-[380px] md:h-[380px] lg:w-[420px] lg:h-[420px] shrink-0 rounded-[28px] overflow-hidden bg-transparent shadow-2xl shadow-black/80 border border-[var(--border-main)] relative group transition-all duration-300">
         {currentTrack || customCover ? (
           <>
             {isVideoUrl(coverUrl) ? (
