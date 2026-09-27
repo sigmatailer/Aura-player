@@ -29,9 +29,7 @@ export class AudioService {
 
   constructor() {
     this.audio = new Audio();
-    if (!isMobile) {
-      this.audio.crossOrigin = 'anonymous';
-    }
+    this.audio.crossOrigin = 'anonymous';
     
     // Инициализируем громкость с учетом кривой
     this.applyVolume(usePlayerStore.getState().volume ?? 1);
@@ -333,12 +331,12 @@ export class AudioService {
   }
 
   public initEqualizer() {
-    if (isMobile) return;
     if (this.audioCtx) return;
     try {
       this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
         latencyHint: 'playback'
       });
+      this.resumeAudioContext();
       this.source = this.audioCtx.createMediaElementSource(this.audio);
       
       // Pre-amp
@@ -435,6 +433,8 @@ export class AudioService {
       const multiplier = Math.pow(10, gainDb / 20);
       if (this.audioCtx && this.audioCtx.state === 'running') {
         this.gainNode.gain.setTargetAtTime(multiplier, this.audioCtx.currentTime, 0.03);
+      } else {
+        this.gainNode.gain.value = multiplier;
       }
     }
   }

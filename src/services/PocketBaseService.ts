@@ -102,9 +102,15 @@ class PocketBaseService {
   private unsubscribePlaylists: (() => void) | null = null;
   private unsubscribeDevices: (() => void) | null = null;
   private unsubscribeUser: (() => void) | null = null;
+  private unsubscribeHistory: (() => void) | null = null;
+  private unsubscribeForYou: (() => void) | null = null;
   private isSyncingFavorites: boolean = false;
   private isSyncingPlaylists: boolean = false;
+  private isSyncingHistory: boolean = false;
+  private isSyncingForYou: boolean = false;
   private isInternalSync: boolean = false;
+  private historyDebounceTimer: any = null;
+  private forYouDebounceTimer: any = null;
   private deviceListeners = new Set<() => void>();
 
   public formatUserRecord(record: any): CloudUser {
@@ -182,6 +188,13 @@ class PocketBaseService {
       onTrackLiked: (track, isLiked) => this.onTrackLiked(track, isLiked),
       onPlaylistModified: (playlist) => this.onPlaylistModified(playlist),
       onPlaylistDeleted: (name) => this.onPlaylistDeleted(name)
+    });
+
+    // Register player store history sync listener
+    usePlayerStore.subscribe((state, prevState) => {
+      if (state.history !== prevState.history && !this.isInternalSync && !this.isSyncingHistory && this.isLoggedIn()) {
+        this.pushHistory(state.history || []);
+      }
     });
   }
 
@@ -468,6 +481,14 @@ class PocketBaseService {
       this.unsubscribeUser();
       this.unsubscribeUser = null;
     }
+    if (this.unsubscribeHistory) {
+      this.unsubscribeHistory();
+      this.unsubscribeHistory = null;
+    }
+    if (this.unsubscribeForYou) {
+      this.unsubscribeForYou();
+      this.unsubscribeForYou = null;
+    }
     this.pb.authStore.clear();
     useAuthStore.getState().logout();
   }
@@ -480,7 +501,12 @@ class PocketBaseService {
     useAuthStore.getState().setSyncing(true);
     useAuthStore.getState().setSyncStatus('Синхронизация...');
     try {
-      await Promise.all([this.syncFavorites(), this.syncPlaylists()]);
+      await Promise.all([
+        this.syncFavorites(),
+        this.syncPlaylists(),
+        this.syncHistory(),
+        this.syncForYou()
+      ]);
       useAuthStore.getState().setLastSyncTime(Date.now());
       useAuthStore.getState().setSyncStatus('Синхронизировано');
     } catch (err) {
@@ -838,6 +864,184 @@ class PocketBaseService {
     }
   }
 
+  public async syncHistory() {
+    const userId = this.getUserId();
+    if (!userId || this.isSyncingHistory) return;
+    this.isSyncingHistory = true;
+
+    try {
+      const records = await this.pb.collection('history').getList(1, 1, {
+        filter: `user = "${userId}"`
+      });
+
+      const playerStore = usePlayerStore.getState();
+      const localHistory: Track[] = playerStore.history || [];
+
+      if (records.items.length > 0) {
+        const record = records.items[0];
+        const serverTracks: Track[] = Array.isArray(record.tracks_json) ? record.tracks_json : [];
+
+        const trackMap = new Map<string, Track>();
+        const merged: Track[] = [];
+
+        for (const t of localHistory) {
+          if (!t || !t.id) continue;
+          const key = (t.filePath || t.id).toLowerCase();
+          if (!trackMap.has(key)) {
+            trackMap.set(key, t);
+            merged.push(t);
+          }
+        }
+
+        for (const t of serverTracks) {
+          if (!t || !t.id) continue;
+          const key = (t.filePath || t.id).toLowerCase();
+          if (!trackMap.has(key)) {
+            trackMap.set(key, t);
+            merged.push(t);
+          }
+        }
+
+        const finalHistory = merged.slice(0, 50);
+
+        if (JSON.stringify(finalHistory) !== JSON.stringify(localHistory)) {
+          this.isInternalSync = true;
+          usePlayerStore.setState({ history: finalHistory });
+          this.isInternalSync = false;
+        }
+
+        if (localHistory.length > 0 && JSON.stringify(finalHistory) !== JSON.stringify(serverTracks)) {
+          await this.pb.collection('history').update(record.id, {
+            tracks_json: finalHistory
+          });
+        }
+      } else if (localHistory.length > 0) {
+        await this.pb.collection('history').create({
+          user: userId,
+          tracks_json: localHistory.slice(0, 50)
+        });
+      }
+    } catch (err) {
+      console.warn('syncHistory error:', err);
+    } finally {
+      this.isSyncingHistory = false;
+    }
+  }
+
+  public pushHistory(tracks: Track[]) {
+    const userId = this.getUserId();
+    if (!userId || this.isInternalSync || this.isSyncingHistory) return;
+
+    if (this.historyDebounceTimer) {
+      clearTimeout(this.historyDebounceTimer);
+    }
+
+    this.historyDebounceTimer = setTimeout(async () => {
+      try {
+        const records = await this.pb.collection('history').getList(1, 1, {
+          filter: `user = "${userId}"`
+        });
+        const cleanTracks = tracks.slice(0, 50);
+        if (records.items.length > 0) {
+          await this.pb.collection('history').update(records.items[0].id, {
+            tracks_json: cleanTracks
+          });
+        } else {
+          await this.pb.collection('history').create({
+            user: userId,
+            tracks_json: cleanTracks
+          });
+        }
+      } catch (err) {
+        console.warn('pushHistory error:', err);
+      }
+    }, 1200);
+  }
+
+  public async syncForYou() {
+    const userId = this.getUserId();
+    if (!userId || this.isSyncingForYou) return;
+    this.isSyncingForYou = true;
+
+    try {
+      const records = await this.pb.collection('for_you').getList(1, 1, {
+        filter: `user = "${userId}"`
+      });
+
+      const localMixRaw = localStorage.getItem('aura_for_you_mix');
+      const localMix: Track[] = localMixRaw ? JSON.parse(localMixRaw) : [];
+      const localTitle = localStorage.getItem('aura_for_you_mix_title') || '';
+      const localRecsRaw = localStorage.getItem('aura_for_you_recs');
+      const localRecs: Track[] = localRecsRaw ? JSON.parse(localRecsRaw) : [];
+
+      if (records.items.length > 0) {
+        const rec = records.items[0];
+        const serverMix: Track[] = Array.isArray(rec.mix_tracks_json) ? rec.mix_tracks_json : [];
+        const serverTitle: string = rec.title || '';
+        const serverRecs: Track[] = Array.isArray(rec.rec_tracks_json) ? rec.rec_tracks_json : [];
+
+        if (serverMix.length > 0) {
+          localStorage.setItem('aura_for_you_mix', JSON.stringify(serverMix));
+          if (serverTitle) localStorage.setItem('aura_for_you_mix_title', serverTitle);
+          if (serverRecs.length > 0) localStorage.setItem('aura_for_you_recs', JSON.stringify(serverRecs));
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('aura-foryou-synced', {
+              detail: { mix: serverMix, title: serverTitle, recs: serverRecs }
+            }));
+          }
+        } else if (localMix.length > 0) {
+          await this.pb.collection('for_you').update(rec.id, {
+            title: localTitle,
+            mix_tracks_json: localMix,
+            rec_tracks_json: localRecs
+          });
+        }
+      } else if (localMix.length > 0) {
+        await this.pb.collection('for_you').create({
+          user: userId,
+          title: localTitle,
+          mix_tracks_json: localMix,
+          rec_tracks_json: localRecs
+        });
+      }
+    } catch (err) {
+      console.warn('syncForYou error:', err);
+    } finally {
+      this.isSyncingForYou = false;
+    }
+  }
+
+  public pushForYou(mix: Track[], title: string, recs: Track[]) {
+    const userId = this.getUserId();
+    if (!userId || this.isInternalSync || this.isSyncingForYou) return;
+
+    if (this.forYouDebounceTimer) {
+      clearTimeout(this.forYouDebounceTimer);
+    }
+
+    this.forYouDebounceTimer = setTimeout(async () => {
+      try {
+        const records = await this.pb.collection('for_you').getList(1, 1, {
+          filter: `user = "${userId}"`
+        });
+        const payload = {
+          user: userId,
+          title: title || '',
+          mix_tracks_json: mix || [],
+          rec_tracks_json: recs || []
+        };
+        if (records.items.length > 0) {
+          await this.pb.collection('for_you').update(records.items[0].id, payload);
+        } else {
+          await this.pb.collection('for_you').create(payload);
+        }
+      } catch (err) {
+        console.warn('pushForYou error:', err);
+      }
+    }, 1500);
+  }
+
   public subscribeRealtime() {
     const userId = this.getUserId();
     if (!userId) return;
@@ -953,6 +1157,61 @@ class PocketBaseService {
         this.unsubscribeUser = unsub;
       }).catch(err => {
         console.warn('Realtime user profile subscribe error:', err);
+      });
+
+      // 5. Subscribe to listening history
+      if (this.unsubscribeHistory) {
+        this.unsubscribeHistory();
+        this.unsubscribeHistory = null;
+      }
+      this.pb.collection('history').subscribe('*', (e) => {
+        if (this.isSyncingHistory || this.isInternalSync) return;
+        if (e.record.user !== userId) return;
+
+        if (e.action === 'create' || e.action === 'update') {
+          const serverTracks = Array.isArray(e.record.tracks_json) ? e.record.tracks_json : [];
+          if (serverTracks.length > 0) {
+            this.isInternalSync = true;
+            usePlayerStore.setState({ history: serverTracks });
+            this.isInternalSync = false;
+          }
+        }
+      }).then(unsub => {
+        this.unsubscribeHistory = unsub;
+      }).catch(err => {
+        console.warn('Realtime history subscribe error:', err);
+      });
+
+      // 6. Subscribe to For You mix & recommendations
+      if (this.unsubscribeForYou) {
+        this.unsubscribeForYou();
+        this.unsubscribeForYou = null;
+      }
+      this.pb.collection('for_you').subscribe('*', (e) => {
+        if (this.isSyncingForYou || this.isInternalSync) return;
+        if (e.record.user !== userId) return;
+
+        if (e.action === 'create' || e.action === 'update') {
+          const serverMix = Array.isArray(e.record.mix_tracks_json) ? e.record.mix_tracks_json : [];
+          const serverTitle = e.record.title || '';
+          const serverRecs = Array.isArray(e.record.rec_tracks_json) ? e.record.rec_tracks_json : [];
+
+          if (serverMix.length > 0) {
+            localStorage.setItem('aura_for_you_mix', JSON.stringify(serverMix));
+            if (serverTitle) localStorage.setItem('aura_for_you_mix_title', serverTitle);
+            if (serverRecs.length > 0) localStorage.setItem('aura_for_you_recs', JSON.stringify(serverRecs));
+
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('aura-foryou-synced', {
+                detail: { mix: serverMix, title: serverTitle, recs: serverRecs }
+              }));
+            }
+          }
+        }
+      }).then(unsub => {
+        this.unsubscribeForYou = unsub;
+      }).catch(err => {
+        console.warn('Realtime for_you subscribe error:', err);
       });
     } catch (e) {
       console.warn('PocketBase realtime subscribe error:', e);

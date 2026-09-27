@@ -8,6 +8,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import { WaveBanner } from './WaveBanner';
 import { invoke } from '@tauri-apps/api/core';
 import { Track } from '../types';
+import { pocketBaseService } from '../services/PocketBaseService';
 
 interface VibeArtist {
   id?: string;
@@ -47,6 +48,19 @@ export const MyVibe: React.FC = () => {
   const carouselRef = useRef<HTMLDivElement>(null);
   const releasesRef = useRef<HTMLDivElement>(null);
   const forYouRef = useRef<HTMLDivElement>(null);
+
+  // Sync with cloud updates
+  useEffect(() => {
+    const handleSync = (e: any) => {
+      if (e.detail) {
+        if (Array.isArray(e.detail.mix) && e.detail.mix.length > 0) setForYouMixTracks(e.detail.mix);
+        if (e.detail.title) setForYouMixTitle(e.detail.title);
+        if (Array.isArray(e.detail.recs) && e.detail.recs.length > 0) setForYouRecommendations(e.detail.recs);
+      }
+    };
+    window.addEventListener('aura-foryou-synced', handleSync);
+    return () => window.removeEventListener('aura-foryou-synced', handleSync);
+  }, []);
 
   const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
   const isVibeMode = isWaveActive && queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
@@ -213,9 +227,12 @@ export const MyVibe: React.FC = () => {
         setForYouMixTitle(mixName);
         localStorage.setItem('aura_for_you_mix', JSON.stringify(collectedMixTracks));
         localStorage.setItem('aura_for_you_mix_title', mixName);
-      }
-
-      if (collectedRecTracks.length > 0) {
+        if (collectedRecTracks.length > 0) {
+          setForYouRecommendations(collectedRecTracks);
+          localStorage.setItem('aura_for_you_recs', JSON.stringify(collectedRecTracks));
+        }
+        pocketBaseService.pushForYou(collectedMixTracks, mixName, collectedRecTracks);
+      } else if (collectedRecTracks.length > 0) {
         setForYouRecommendations(collectedRecTracks);
         localStorage.setItem('aura_for_you_recs', JSON.stringify(collectedRecTracks));
       }
