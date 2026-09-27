@@ -488,6 +488,9 @@ export const useThemeStore = create<ThemeStore>()(
           updates.customWallpaper = item ? item.url : null;
           if (item) {
             updates.transparencyEnabled = true;
+            if ((state.wallpaperOpacity || 0) < 70) {
+              updates.wallpaperOpacity = 85;
+            }
           }
         }
         // Slot 1: Custom Player Cover
@@ -497,6 +500,12 @@ export const useThemeStore = create<ThemeStore>()(
         // Slot 2: Video background
         if (slotIndex === 2) {
           updates.customWallpaper = item ? item.url : null;
+          if (item) {
+            updates.transparencyEnabled = true;
+            if ((state.wallpaperOpacity || 0) < 70) {
+              updates.wallpaperOpacity = 85;
+            }
+          }
         }
         // Slot 3: Profile Banner
         if (slotIndex === 3) {
@@ -561,7 +570,11 @@ export const useThemeStore = create<ThemeStore>()(
         const found = AVAILABLE_FONTS.find(f => f.id === state.trackFontId);
         return found || state.getActiveFont();
       },
-      setWallpaper: (url) => set({ customWallpaper: url }),
+      setWallpaper: (url) => set((state) => ({ 
+        customWallpaper: url,
+        transparencyEnabled: url ? true : state.transparencyEnabled,
+        wallpaperOpacity: url && (state.wallpaperOpacity || 0) < 70 ? 85 : state.wallpaperOpacity
+      })),
       setWallpaperBlur: (blur) => set({ wallpaperBlur: blur }),
       setWallpaperOpacity: (opacity) => set({ wallpaperOpacity: opacity }),
       setWallpaperSpeed: (speed) => set({ wallpaperSpeed: speed }),

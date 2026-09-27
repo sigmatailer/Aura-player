@@ -89,49 +89,68 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
   const [pointerDragItem, setPointerDragItem] = useState<MediaLibraryItem | null>(null);
   const [pointerDragPos, setPointerDragPos] = useState<{ x: number; y: number } | null>(null);
   const [pointerHoverSlot, setPointerHoverSlot] = useState<number | null>(null);
+  const currentHoverSlotRef = useRef<number | null>(null);
 
   const handleStartPointerDrag = (e: React.PointerEvent, item: MediaLibraryItem) => {
-    if (e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     if ((e.target as HTMLElement).closest('button')) return;
-    if (e.pointerType === 'touch' || (typeof window !== 'undefined' && window.innerWidth < 768)) {
-      return;
-    }
+
     e.preventDefault();
     setPointerDragItem(item);
     setPointerDragPos({ x: e.clientX, y: e.clientY });
+    currentHoverSlotRef.current = null;
+
+    let lastX = e.clientX;
+    let lastY = e.clientY;
 
     const onPointerMove = (moveEv: PointerEvent) => {
+      lastX = moveEv.clientX;
+      lastY = moveEv.clientY;
       setPointerDragPos({ x: moveEv.clientX, y: moveEv.clientY });
 
       const elem = document.elementFromPoint(moveEv.clientX, moveEv.clientY);
       const slotEl = elem?.closest('[data-slot-idx]');
       if (slotEl) {
         const sIdx = parseInt(slotEl.getAttribute('data-slot-idx') || '-1', 10);
-        setPointerHoverSlot(sIdx >= 0 ? sIdx : null);
+        const resolved = sIdx >= 0 ? sIdx : null;
+        setPointerHoverSlot(resolved);
+        currentHoverSlotRef.current = resolved;
       } else {
         setPointerHoverSlot(null);
+        currentHoverSlotRef.current = null;
       }
     };
 
-    const onPointerUp = (upEv: PointerEvent) => {
+    const onPointerEnd = (upEv: PointerEvent) => {
       window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
 
-      const elem = document.elementFromPoint(upEv.clientX, upEv.clientY);
+      const clientX = upEv.clientX ?? lastX;
+      const clientY = upEv.clientY ?? lastY;
+
+      let targetIdx: number | null = null;
+      const elem = document.elementFromPoint(clientX, clientY);
       const slotEl = elem?.closest('[data-slot-idx]');
       if (slotEl) {
-        const sIdx = parseInt(slotEl.getAttribute('data-slot-idx') || '-1', 10);
-        if (sIdx >= 0 && sIdx < 5) {
-          setSlotMedia(sIdx, item);
-        }
+        targetIdx = parseInt(slotEl.getAttribute('data-slot-idx') || '-1', 10);
+      }
+      if (targetIdx === null || isNaN(targetIdx) || targetIdx < 0) {
+        targetIdx = currentHoverSlotRef.current;
+      }
+
+      if (targetIdx !== null && targetIdx >= 0 && targetIdx < 5) {
+        setSlotMedia(targetIdx, item);
       }
       setPointerDragItem(null);
       setPointerDragPos(null);
       setPointerHoverSlot(null);
+      currentHoverSlotRef.current = null;
     };
 
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerEnd);
+    window.addEventListener('pointercancel', onPointerEnd);
   };
 
   // Interface Settings States
@@ -196,7 +215,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const targetSlotRef = useRef<number | null>(null);
-  const [selectedMediaForAction, setSelectedMediaForAction] = useState<MediaLibraryItem | null>(null);
 
   // Yandex Token input & Device Auth state
   const [yaInputToken, setYaInputToken] = useState('');
@@ -1625,20 +1643,14 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                             }
                             setDraggedMediaItem(null);
                           }}
-                          onClick={() => {
-                            if (!item) {
-                              targetSlotRef.current = slot.idx;
-                              mediaFileInputRef.current?.click();
-                            }
-                          }}
-                          className={`relative group aspect-[4/3] rounded-2xl border transition-all flex flex-col items-center justify-center overflow-hidden cursor-pointer ${
+                          className={`relative group aspect-[4/3] rounded-2xl border transition-all flex flex-col items-center justify-center overflow-hidden ${
                             isHighlighted 
                               ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]/60 bg-[var(--accent)]/25 scale-[1.05] shadow-lg shadow-[var(--accent)]/30' 
                               : isAnyDragging
                                 ? 'border-dashed border-white/50 bg-white/[0.08] animate-pulse'
                                 : item 
                                   ? 'border-white/30 bg-black/40 ring-1 ring-white/10' 
-                                  : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05] active:scale-95'
+                                  : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20'
                           }`}
                         >
                           {item ? (
@@ -1665,17 +1677,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    targetSlotRef.current = slot.idx;
-                                    mediaFileInputRef.current?.click();
-                                  }}
-                                  className="p-1 rounded-lg bg-black/60 hover:bg-white/30 text-white/90 border border-white/10 transition-colors cursor-pointer"
-                                  title="Заменить файл"
-                                >
-                                  <Upload size={12} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
                                     clearSlot(slot.idx);
                                   }}
                                   className="p-1 rounded-lg bg-black/60 hover:bg-red-500/70 text-white/90 border border-white/10 transition-colors cursor-pointer"
@@ -1690,11 +1691,8 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                               </span>
                             </>
                           ) : (
-                            <div className="flex flex-col items-center justify-center gap-1.5 p-2 text-center">
-                              <div className="relative">
-                                <IconComp size={24} className="text-white/35 transition-colors group-hover:text-white/60" />
-                                <Plus size={11} className="absolute -bottom-1 -right-1 text-white/70 bg-white/15 rounded-full p-0.5" />
-                              </div>
+                            <div className="flex flex-col items-center justify-center gap-1.5 p-2 text-center pointer-events-none">
+                              <IconComp size={24} className="text-white/35 transition-colors group-hover:text-white/60" />
                               <span className="text-[11px] font-medium text-white/40 group-hover:text-white/70">
                                 {slot.title}
                               </span>
@@ -1786,9 +1784,21 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                       {mediaLibrary.map(item => (
                         <div
                           key={item.id}
+                          draggable={true}
+                          onDragStart={(e) => {
+                            setDraggedMediaItem(item);
+                            try {
+                              e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                              e.dataTransfer.setData('application/json', JSON.stringify(item));
+                            } catch {}
+                          }}
+                          onDragEnd={() => {
+                            setDraggedMediaItem(null);
+                            setDragOverSlot(null);
+                          }}
                           onPointerDown={(e) => handleStartPointerDrag(e, item)}
-                          onClick={() => setSelectedMediaForAction(item)}
-                          className="group relative aspect-[4/3] rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02] hover:border-white/30 cursor-pointer sm:cursor-grab active:scale-[0.98] transition-all shadow-sm select-none"
+                          style={{ touchAction: 'none' }}
+                          className="group relative aspect-[4/3] rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02] hover:border-white/30 cursor-grab active:cursor-grabbing transition-all shadow-sm select-none touch-none"
                         >
                           {item.type === 'video' ? (
                             <video 
@@ -2114,101 +2124,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         className="hidden"
         onChange={handleBannerFileSelected}
       />
-
-      {/* Action modal for assigning media from library */}
-      <AnimatePresence>
-        {selectedMediaForAction && (
-          <div 
-            className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-            onClick={() => setSelectedMediaForAction(null)}
-          >
-            <motion.div
-              initial={{ y: '100%', opacity: 0 }}
-              animate={{ y: '0%', opacity: 1 }}
-              exit={{ y: '100%', opacity: 0 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full sm:max-w-sm bg-[#16161a] border-t sm:border border-white/10 rounded-t-[28px] sm:rounded-[28px] p-5 space-y-4 shadow-2xl"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-14 h-14 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0">
-                  {selectedMediaForAction.type === 'video' ? (
-                    <video src={selectedMediaForAction.url} autoPlay loop muted playsInline className="w-full h-full object-cover" />
-                  ) : (
-                    <img src={selectedMediaForAction.url} alt="" className="w-full h-full object-cover" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-white truncate">{selectedMediaForAction.name}</div>
-                  <div className="text-xs text-white/50 uppercase font-mono">{selectedMediaForAction.type}</div>
-                </div>
-                <button
-                  onClick={() => setSelectedMediaForAction(null)}
-                  className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/5 cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="text-xs font-bold text-white/60 uppercase tracking-wider px-1">
-                Куда применить:
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => {
-                    setSlotMedia(0, selectedMediaForAction);
-                    setSelectedMediaForAction(null);
-                  }}
-                  className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-95 border border-white/10 gap-2 text-center transition-all cursor-pointer"
-                >
-                  <ImageIcon size={22} className="text-[var(--accent)]" />
-                  <span className="text-xs font-bold text-white">Обои</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setSlotMedia(1, selectedMediaForAction);
-                    setSelectedMediaForAction(null);
-                  }}
-                  className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-95 border border-white/10 gap-2 text-center transition-all cursor-pointer"
-                >
-                  <Disc size={22} className="text-purple-400" />
-                  <span className="text-xs font-bold text-white">Обложка</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setSlotMedia(3, selectedMediaForAction);
-                    setSelectedMediaForAction(null);
-                  }}
-                  className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-95 border border-white/10 gap-2 text-center transition-all cursor-pointer"
-                >
-                  <Sparkles size={22} className="text-amber-400" />
-                  <span className="text-xs font-bold text-white">Баннер</span>
-                </button>
-              </div>
-
-              <div className="pt-2 border-t border-white/10 flex gap-2">
-                <button
-                  onClick={() => {
-                    removeMediaItem(selectedMediaForAction.id);
-                    setSelectedMediaForAction(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 size={14} />
-                  Удалить из библиотеки
-                </button>
-                <button
-                  onClick={() => setSelectedMediaForAction(null)}
-                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 font-medium text-xs transition-colors cursor-pointer"
-                >
-                  Отмена
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
     </motion.aside>
   );

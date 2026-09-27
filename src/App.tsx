@@ -46,9 +46,11 @@ function App() {
   const [isFetchingVibe, setIsFetchingVibe] = useState(false);
   const { 
     customWallpaper, wallpaperOpacity, wallpaperSpeed,
-    transparencyEnabled, windowOpacity, glassBlur, glassStrength
+    transparencyEnabled, windowOpacity, glassBlur, glassStrength,
+    customSlots
   } = useThemeStore();
   const wallpaperVideoRef = useRef<HTMLVideoElement>(null);
+  const isWallpaperVideo = (customSlots?.[0]?.type === 'video') || isVideoUrl(customWallpaper);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -69,10 +71,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (wallpaperVideoRef.current) {
+    if (wallpaperVideoRef.current && isWallpaperVideo) {
       wallpaperVideoRef.current.playbackRate = wallpaperSpeed;
+      wallpaperVideoRef.current.play().catch(() => {});
     }
-  }, [wallpaperSpeed, customWallpaper]);
+  }, [wallpaperSpeed, customWallpaper, isWallpaperVideo]);
 
   // Endless Vibe & Auto-Similar Tracks Logic
   useEffect(() => {
@@ -201,7 +204,7 @@ function App() {
       {/* 1. Custom Wallpaper Layer (z-0) */}
       {customWallpaper && (
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-          {isVideoUrl(customWallpaper) ? (
+          {isWallpaperVideo ? (
             <video
               ref={wallpaperVideoRef}
               src={customWallpaper}
@@ -209,28 +212,32 @@ function App() {
               loop
               muted
               playsInline
-              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = wallpaperSpeed; }}
+              onLoadedMetadata={(e) => { 
+                e.currentTarget.playbackRate = wallpaperSpeed; 
+                e.currentTarget.play().catch(() => {});
+              }}
               className="absolute inset-0 w-full h-full object-cover transition-all duration-500 ease-out"
               style={{
                 filter: glassBlur > 0 ? `blur(${glassBlur}px)` : 'none',
                 transform: glassBlur > 0 ? 'scale(1.06)' : 'scale(1.0)',
-                opacity: Math.max(0.05, Math.min(1, wallpaperOpacity / 100)),
+                opacity: Math.max(0.15, Math.min(1, (wallpaperOpacity || 85) / 100)),
               }}
             />
           ) : (
-            <div 
-              className="absolute inset-0 bg-cover bg-center transition-all duration-500 ease-out"
+            <img 
+              src={customWallpaper}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover transition-all duration-500 ease-out"
               style={{
-                backgroundImage: `url("${customWallpaper}")`,
                 filter: glassBlur > 0 ? `blur(${glassBlur}px)` : 'none',
                 transform: glassBlur > 0 ? 'scale(1.06)' : 'scale(1.0)',
-                opacity: Math.max(0.05, Math.min(1, wallpaperOpacity / 100)),
+                opacity: Math.max(0.15, Math.min(1, (wallpaperOpacity || 85) / 100)),
               }}
             />
           )}
           <div 
             className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300" 
-            style={{ opacity: Math.max(0.05, 0.35 - (windowOpacity / 100) * 0.25) }}
+            style={{ opacity: Math.max(0.04, 0.20 - (windowOpacity / 100) * 0.15) }}
           />
         </div>
       )}
@@ -444,8 +451,8 @@ function App() {
             <main 
               className="flex-1 flex flex-col overflow-hidden rounded-none sm:rounded-[28px] border-0 sm:border shadow-2xl relative transition-all"
               style={{
-                backgroundColor: transparencyEnabled && customWallpaper
-                  ? `rgba(10, 10, 14, ${Math.max(0.04, (windowOpacity / 100) * 0.70)})`
+                backgroundColor: customWallpaper
+                  ? `rgba(10, 10, 14, ${Math.max(0.04, (windowOpacity / 100) * 0.55)})`
                   : 'var(--bg-main)',
                 backdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0 
                   ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)` 
@@ -502,7 +509,7 @@ function App() {
         </div>
 
         {/* Мобильная нижняя навигационная панель */}
-        <nav className={`md:hidden shrink-0 pb-3.5 pt-1.5 border-t border-[var(--border-main)] flex items-center justify-around px-2 z-40 select-none ${customWallpaper ? 'bg-black/70 backdrop-blur-md' : 'bg-[var(--bg-surface)]'}`}>
+        <nav className={`md:hidden shrink-0 pb-3.5 pt-1.5 border-t border-[var(--border-main)] flex items-center justify-around px-2 z-40 select-none ${customWallpaper ? 'bg-black/50 backdrop-blur-md' : 'bg-[var(--bg-surface)]'}`}>
           {/* Кнопка 1: Иконка домика -> открывает Волну */}
           <button 
             className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors ${activeTab === 'myvibe' ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-secondary)]'}`}
