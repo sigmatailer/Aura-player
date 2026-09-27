@@ -6,13 +6,13 @@ import { audioService } from '../services/AudioService';
 
 const PRESETS = [
   { name: 'Нейтральный', id: 'flat', bands: [0, 0, 0, 0, 0, 0], preAmp: 0 },
-  { name: 'Басы', id: 'bass', bands: [7, 5, 2, -1, -2, -3], preAmp: -2 },
-  { name: 'Высокие', id: 'treble', bands: [-3, -2, -1, 2, 5, 7], preAmp: -2 },
-  { name: 'Вокал', id: 'vocal', bands: [-2, -1, 4, 5, 2, 0], preAmp: -1 },
-  { name: 'Мощный', id: 'powerful', bands: [6, 4, -1, 2, 5, 6], preAmp: -3 },
-  { name: 'Электронная', id: 'electronic', bands: [5, 4, 0, 2, 5, 4], preAmp: -2 },
-  { name: 'Рок', id: 'rock', bands: [5, 3, -1, 2, 4, 6], preAmp: -2 },
-  { name: 'Хип-хоп', id: 'hiphop', bands: [7, 5, 1, 2, 1, 3], preAmp: -2 },
+  { name: 'Басы', id: 'bass', bands: [9, 7, 3, 0, -1, -2], preAmp: 0 },
+  { name: 'Высокие', id: 'treble', bands: [-2, -1, 0, 3, 7, 9], preAmp: 0 },
+  { name: 'Вокал', id: 'vocal', bands: [-2, -1, 5, 7, 4, 1], preAmp: 0 },
+  { name: 'Мощный', id: 'powerful', bands: [9, 6, 0, 4, 7, 9], preAmp: 0 },
+  { name: 'Электронная', id: 'electronic', bands: [8, 6, 1, 3, 7, 6], preAmp: 0 },
+  { name: 'Рок', id: 'rock', bands: [8, 5, -1, 3, 6, 9], preAmp: 0 },
+  { name: 'Хип-хоп', id: 'hiphop', bands: [10, 7, 2, 3, 2, 4], preAmp: 0 },
 ];
 
 const FREQ_LABELS = ['60', '150', '400', '1k', '2.4k', '15k'];
@@ -40,15 +40,14 @@ export const EqualizerPopover: React.FC<EqualizerPopoverProps> = ({ onClose, tri
   const dragBandsRef = useRef<number[]>(eqBands);
 
   useEffect(() => {
+    audioService.initEqualizer();
+  }, []);
+
+  useEffect(() => {
     dragBandsRef.current = dragBands || eqBands;
   }, [dragBands, eqBands]);
 
   const currentBands = dragBands || eqBands;
-
-  useEffect(() => {
-    audioService.initEqualizer();
-    audioService.resumeAudioContext();
-  }, []);
 
   // Close when clicking outside
   useEffect(() => {

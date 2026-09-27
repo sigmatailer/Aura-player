@@ -381,14 +381,23 @@ export class AudioService {
       this.resumeAudioContext();
       this.source = this.audioCtx.createMediaElementSource(this.audio);
       
-      // Pre-amp
+      // CRITICAL FIX: The audio element must pass unity gain (1.0) into Web Audio,
+      // so volume is NOT multiplied twice (audio.volume * volumeNode.gain)!
+      try {
+        this.audio.volume = 1.0;
+      } catch {}
+
+      // Pre-amp node
       this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.value = 1.0;
+      const currentPreAmp = usePlayerStore.getState().eqPreAmp || 0;
+      this.gainNode.gain.value = Math.pow(10, currentPreAmp / 20);
       
       let lastNode: AudioNode = this.gainNode;
       this.source.connect(lastNode);
       
-      // Create 6 bands
+      // Create 6 bands with musical Q for punchy, audible sound shaping
+      this.eqBands = [];
+      const currentBands = usePlayerStore.getState().eqBands || [0, 0, 0, 0, 0, 0];
       this.eqFrequencies.forEach((freq, index) => {
         const filter = this.audioCtx!.createBiquadFilter();
         if (index === 0) {
@@ -397,38 +406,30 @@ export class AudioService {
           filter.type = 'highshelf';
         } else {
           filter.type = 'peaking';
-          filter.Q.value = 1.2;
+          filter.Q.value = 1.0; // Musical curve to eliminate dead gaps between bands
         }
         
         filter.frequency.value = freq;
-        filter.gain.value = 0; // neutral by default
+        filter.gain.value = currentBands[index] || 0;
         
         lastNode.connect(filter);
         lastNode = filter;
         this.eqBands.push(filter);
       });
 
-      // Synchronize current bands & preAmp immediately from store
-      try {
-        const currentBands = usePlayerStore.getState().eqBands;
-        const currentPreAmp = usePlayerStore.getState().eqPreAmp;
-        if (currentPreAmp) this.setPreAmp(currentPreAmp);
-        currentBands.forEach((val, i) => this.setEqBand(i, val));
-      } catch {}
-      
-      // Transparent anti-clipping peak limiter:
-      // Soft knee and 200ms release completely eliminate bass cycle harmonic distortion ("скрипы")
+      // Transparent peak safety limiter (prevents 0dBFS distortion without squashing dynamic range or lowering volume)
       const antiClipLimiter = this.audioCtx.createDynamicsCompressor();
-      antiClipLimiter.threshold.value = -1.0;
-      antiClipLimiter.knee.value = 6.0;
-      antiClipLimiter.ratio.value = 16.0;
-      antiClipLimiter.attack.value = 0.005;
-      antiClipLimiter.release.value = 0.20;
+      antiClipLimiter.threshold.value = -0.5; // Only acts on clipping peaks
+      antiClipLimiter.knee.value = 2.0;       // Tight transparent knee
+      antiClipLimiter.ratio.value = 12.0;
+      antiClipLimiter.attack.value = 0.002;   // 2ms fast attack
+      antiClipLimiter.release.value = 0.05;   // 50ms fast transparent release (no volume ducking)
 
-      // Dedicated Volume Gain Node (Web Audio API volume control - works across all platforms including iOS WebKit!)
+      // Dedicated Volume Gain Node (single source of volume truth)
       this.volumeNode = this.audioCtx.createGain();
       const currentVol = usePlayerStore.getState().volume ?? 1;
-      this.volumeNode.gain.value = Math.max(0, Math.min(1, Math.pow(currentVol, 2)));
+      const curved = Math.max(0, Math.min(1, Math.pow(currentVol, 2)));
+      this.volumeNode.gain.value = curved;
 
       lastNode.connect(antiClipLimiter);
       antiClipLimiter.connect(this.volumeNode);
@@ -440,15 +441,21 @@ export class AudioService {
 
   public applyVolume(volume: number) {
     const curved = Math.max(0, Math.min(1, Math.pow(volume, 2)));
-    try {
-      this.audio.volume = curved;
-    } catch {}
-    if (this.volumeNode) {
-      if (this.audioCtx && this.audioCtx.state === 'running') {
-        this.volumeNode.gain.setTargetAtTime(curved, this.audioCtx.currentTime, 0.02);
+    if (this.volumeNode && this.audioCtx) {
+      // AudioContext active: pass unity gain from audio element, let volumeNode control volume
+      try {
+        this.audio.volume = 1.0;
+      } catch {}
+      if (this.audioCtx.state === 'running') {
+        this.volumeNode.gain.setTargetAtTime(curved, this.audioCtx.currentTime, 0.015);
       } else {
         this.volumeNode.gain.value = curved;
       }
+    } else {
+      // AudioContext not active yet: audio element controls volume directly
+      try {
+        this.audio.volume = curved;
+      } catch {}
     }
   }
 
@@ -458,11 +465,7 @@ export class AudioService {
     }
     this.resumeAudioContext();
     if (this.eqBands[index]) {
-      if (this.audioCtx && this.audioCtx.state === 'running') {
-        this.eqBands[index].gain.setTargetAtTime(gainDb, this.audioCtx.currentTime, 0.03);
-      } else {
-        this.eqBands[index].gain.value = gainDb;
-      }
+      this.eqBands[index].gain.value = gainDb;
     }
   }
 
@@ -473,11 +476,7 @@ export class AudioService {
     this.resumeAudioContext();
     if (this.gainNode) {
       const multiplier = Math.pow(10, gainDb / 20);
-      if (this.audioCtx && this.audioCtx.state === 'running') {
-        this.gainNode.gain.setTargetAtTime(multiplier, this.audioCtx.currentTime, 0.03);
-      } else {
-        this.gainNode.gain.value = multiplier;
-      }
+      this.gainNode.gain.value = multiplier;
     }
   }
 
