@@ -267,7 +267,7 @@ function App() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+                  className="fixed inset-0 bg-black/60 backdrop-blur-none sm:backdrop-blur-sm z-[80]"
                   onClick={() => setIsSettingsOpen(false)}
                 />
                 <SettingsDrawer 
@@ -295,7 +295,7 @@ function App() {
               borderRadius: '0px',
               boxShadow: 'none',
             }}
-            transition={{
+            transition={isMobile ? { duration: 0 } : {
               type: 'spring',
               stiffness: 240,
               damping: 30,

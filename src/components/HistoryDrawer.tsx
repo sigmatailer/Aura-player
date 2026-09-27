@@ -168,7 +168,7 @@ export const HistoryDrawer: React.FC = () => {
                           {/* Playing State: Animated wave equalizer bars (only when playing) */}
                           {isThisPlaying && (
                             <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
-                              <PlayingIndicator size="xs" barColor="bg-white" />
+                              <PlayingIndicator size="xs" barColor="bg-[var(--accent)]" />
                             </div>
                           )}
                         </div>

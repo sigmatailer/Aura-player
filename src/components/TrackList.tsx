@@ -103,7 +103,7 @@ const QueueTrackRow: React.FC<QueueTrackRowProps> = ({
           {/* Animated equalizer bars on active track */}
           {isActive && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <PlayingIndicator size="sm" isPaused={!isPlaying} barColor="bg-white" />
+              <PlayingIndicator size="sm" isPaused={!isPlaying} barColor="bg-[var(--accent)]" />
             </div>
           )}
         </div>

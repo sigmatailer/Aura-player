@@ -503,24 +503,28 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
 
   return (
     <motion.aside
-      initial={{ x: '-105%', opacity: 0 }}
+      initial={{ x: '-100%', opacity: 0 }}
       animate={{ x: '0%', opacity: 1 }}
-      exit={{ x: '-105%', opacity: 0 }}
-      transition={{
-        type: 'spring',
-        stiffness: 240,
-        damping: 30,
-        mass: 0.85
-      }}
-      className="fixed sm:absolute inset-0 sm:top-3 sm:bottom-3 sm:left-3 sm:right-auto w-full sm:w-[55%] sm:min-w-[560px] sm:max-w-[720px] rounded-none sm:rounded-[32px] border-0 sm:border z-50 flex flex-col overflow-hidden select-none text-[var(--text-main)] font-sans"
+      exit={{ x: '-100%', opacity: 0 }}
+      transition={
+        typeof window !== 'undefined' && window.innerWidth < 768
+          ? { duration: 0.22, ease: [0.16, 1, 0.3, 1] }
+          : {
+              type: 'spring',
+              stiffness: 240,
+              damping: 30,
+              mass: 0.85
+            }
+      }
+      className="fixed sm:absolute inset-0 sm:top-3 sm:bottom-3 sm:left-3 sm:right-auto w-full sm:w-[55%] sm:min-w-[560px] sm:max-w-[720px] rounded-none sm:rounded-[32px] border-0 sm:border z-[90] flex flex-col overflow-hidden select-none text-[var(--text-main)] font-sans"
       style={{ 
         backgroundColor: transparencyEnabled && customWallpaper
           ? `rgba(14, 14, 18, ${Math.max(0.12, (windowOpacity / 100) * 0.85)})`
           : 'var(--bg-surface)',
-        backdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0
+        backdropFilter: (typeof window !== 'undefined' && window.innerWidth >= 768) && transparencyEnabled && customWallpaper && glassBlur > 0
           ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
           : undefined,
-        WebkitBackdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0
+        WebkitBackdropFilter: (typeof window !== 'undefined' && window.innerWidth >= 768) && transparencyEnabled && customWallpaper && glassBlur > 0
           ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
           : undefined,
         borderColor: transparencyEnabled ? `rgba(255, 255, 255, ${0.08 + (glassStrength / 100) * 0.16})` : 'var(--border-main)',

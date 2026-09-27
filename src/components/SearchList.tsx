@@ -580,8 +580,8 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
   return (
     <div className={`w-full mx-auto h-full flex flex-col transition-all duration-500 ease-in-out ${isHomeState ? 'justify-center max-w-2xl' : 'pt-4 w-full'}`}>
       
-      <div className={`relative z-50 flex flex-col gap-4 shrink-0 transition-all duration-500 ease-in-out ${isHomeState ? 'mb-0' : 'mb-6'}`}>
-        <form onSubmit={handleSearch} className="relative w-full group z-50">
+      <div className={`relative z-20 flex flex-col gap-4 shrink-0 transition-all duration-500 ease-in-out ${isHomeState ? 'mb-0' : 'mb-6'}`}>
+        <form onSubmit={handleSearch} className="relative w-full group z-20">
           <input
             type="text"
             value={query}
@@ -641,7 +641,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -5 }}
                 transition={{ duration: 0.2 }}
-                className="absolute top-full left-0 right-0 bg-[#121216]/98 backdrop-blur-2xl border border-white/[0.08] border-t-0 rounded-b-[22px] overflow-hidden shadow-2xl py-2 z-50"
+                className="absolute top-full left-0 right-0 bg-[#121216]/98 backdrop-blur-2xl border border-white/[0.08] border-t-0 rounded-b-[22px] overflow-hidden shadow-2xl py-2 z-30"
               >
                 {searchHistory.map((item, i) => (
                   <div 

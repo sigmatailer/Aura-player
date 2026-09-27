@@ -29,7 +29,9 @@ export class AudioService {
 
   constructor() {
     this.audio = new Audio();
-    this.audio.crossOrigin = 'anonymous';
+    if (!isMobile) {
+      this.audio.crossOrigin = 'anonymous';
+    }
     
     // Инициализируем громкость с учетом кривой
     this.applyVolume(usePlayerStore.getState().volume ?? 1);
@@ -331,6 +333,7 @@ export class AudioService {
   }
 
   public initEqualizer() {
+    if (isMobile) return;
     if (this.audioCtx) return;
     try {
       this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({

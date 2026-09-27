@@ -54,6 +54,7 @@ const CollectionTrackItem: React.FC<{
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
+      style={{ touchAction: 'pan-y' }}
       whileDrag={{
         scale: 0.992,
         zIndex: 50,
@@ -62,7 +63,7 @@ const CollectionTrackItem: React.FC<{
       transition={{
         layout: { type: 'spring', damping: 26, stiffness: 280 }
       }}
-      className={`group flex items-center justify-between p-2 pr-2 sm:pr-4 mb-2 rounded-2xl border select-none cursor-pointer w-full max-w-full overflow-hidden shrink-0 ${
+      className={`group flex items-center justify-between p-2 pr-2 sm:pr-4 mb-2 rounded-2xl border select-none cursor-pointer w-full max-w-full overflow-hidden shrink-0 touch-pan-y ${
         isDragging
           ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
           : isActive 
@@ -568,7 +569,7 @@ export const Collections: React.FC = () => {
   
     if (view === 'liked') {
       return (
-        <div className="flex-1 h-full flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
+        <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-36 overflow-y-auto overflow-x-hidden w-full max-w-full touch-pan-y scrollbar-hide">
           {/* Back button */}
           <button
             onClick={() => setView('none')}
@@ -579,17 +580,17 @@ export const Collections: React.FC = () => {
           </button>
 
           <div className="flex flex-col gap-4 sm:gap-6 mb-6 shrink-0">
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
-              <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0 shadow-lg">
-                <Heart size={44} className="text-[var(--accent)] sm:w-14 sm:h-14" strokeWidth={1.5} fill="currentColor" />
+            <div className="flex flex-row items-center gap-4 sm:gap-6 text-left">
+              <div className="w-32 h-32 sm:w-44 sm:h-44 rounded-2xl sm:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0 shadow-2xl border border-white/10">
+                <Heart size={48} className="text-[var(--accent)] sm:w-16 sm:h-16" strokeWidth={1.5} fill="currentColor" />
               </div>
-              <div className="flex flex-col pb-1 sm:pb-2 items-center sm:items-start min-w-0">
-                <h1 className="text-3xl sm:text-5xl font-bold text-[var(--text-main)] mb-1 sm:mb-2 tracking-tight">Любимые</h1>
-                <p className="text-[13px] text-[var(--text-secondary)] font-medium">{likedTracks.length} треков</p>
+              <div className="flex flex-col justify-center items-start min-w-0 flex-1">
+                <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-[var(--text-main)] mb-1 tracking-tight">Любимые</h1>
+                <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">{likedTracks.length} треков</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+            <div className="flex flex-wrap items-center gap-2 justify-start">
               <button 
                 onClick={handlePlayLiked}
                 className="flex items-center gap-2 px-5 py-2 bg-[var(--accent)] text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)] rounded-full font-bold transition-colors text-sm mr-2"
@@ -603,7 +604,7 @@ export const Collections: React.FC = () => {
 
           <div className="w-full h-[1px] bg-[var(--bg-surface-hover)] mb-4" />
 
-          <div className="flex flex-col flex-1 w-full max-w-full overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 w-full max-w-full touch-pan-y">
             {likedTracks.length === 0 ? (
               <div className="text-center text-[var(--text-secondary)] mt-10">Нет любимых треков. Нажмите на сердечко во время проигрывания, чтобы добавить.</div>
             ) : (
@@ -611,7 +612,8 @@ export const Collections: React.FC = () => {
                 axis="y"
                 values={likedTracks}
                 onReorder={reorderLikedTracks}
-                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full overflow-hidden"
+                style={{ touchAction: 'pan-y' }}
+                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full touch-pan-y"
               >
                 {likedTracks.map((track, index) => {
                   const isActive = queue[currentTrackIndex]?.id === track.id;
@@ -652,7 +654,7 @@ export const Collections: React.FC = () => {
     
     if (view === 'downloaded') {
       return (
-        <div className="flex-1 h-full flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
+        <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-36 overflow-y-auto overflow-x-hidden w-full max-w-full touch-pan-y scrollbar-hide">
           {/* Back button */}
           <button
             onClick={() => setView('none')}
@@ -663,17 +665,17 @@ export const Collections: React.FC = () => {
           </button>
 
           <div className="flex flex-col gap-4 sm:gap-6 mb-6 shrink-0">
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
-              <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0 shadow-lg">
-                <Cloud size={44} className="text-[var(--accent)] sm:w-14 sm:h-14" strokeWidth={1.5} fill="currentColor" />
+            <div className="flex flex-row items-center gap-4 sm:gap-6 text-left">
+              <div className="w-32 h-32 sm:w-44 sm:h-44 rounded-2xl sm:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0 shadow-2xl border border-white/10">
+                <Cloud size={48} className="text-[var(--accent)] sm:w-16 sm:h-16" strokeWidth={1.5} fill="currentColor" />
               </div>
-              <div className="flex flex-col pb-1 sm:pb-2 items-center sm:items-start min-w-0">
-                <h1 className="text-3xl sm:text-5xl font-bold text-[var(--text-main)] mb-1 sm:mb-2 tracking-tight">Скачанные</h1>
-                <p className="text-[13px] text-[var(--text-secondary)] font-medium">{downloadedTracks.length} треков</p>
+              <div className="flex flex-col justify-center items-start min-w-0 flex-1">
+                <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-[var(--text-main)] mb-1 tracking-tight">Скачанные</h1>
+                <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">{downloadedTracks.length} треков</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+            <div className="flex flex-wrap items-center gap-2 justify-start">
               {downloadedTracks.length > 0 && (
                 <button 
                   onClick={handlePlayDownloaded}
@@ -695,7 +697,7 @@ export const Collections: React.FC = () => {
 
           <div className="w-full h-[1px] bg-[var(--bg-surface-hover)] mb-4" />
 
-          <div className="flex flex-col flex-1 w-full max-w-full overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 w-full max-w-full touch-pan-y">
             {downloadedTracks.length === 0 ? (
               <div className="text-center text-[var(--text-secondary)] mt-10">Здесь будут отображаться скачанные треки. Нажмите плюсик, чтобы добавить файлы.</div>
             ) : (
@@ -703,7 +705,8 @@ export const Collections: React.FC = () => {
                 axis="y"
                 values={downloadedTracks}
                 onReorder={reorderDownloadedTracks}
-                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full overflow-hidden"
+                style={{ touchAction: 'pan-y' }}
+                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full touch-pan-y"
               >
                 {downloadedTracks.map((track, index) => {
                   const isActive = queue[currentTrackIndex]?.id === track.id;
@@ -770,7 +773,7 @@ export const Collections: React.FC = () => {
         }
       };
       return (
-        <div className="flex-1 h-full flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
+        <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-36 overflow-y-auto overflow-x-hidden w-full max-w-full touch-pan-y scrollbar-hide">
           {/* Back button */}
           <button
             onClick={() => setView('none')}
@@ -781,26 +784,26 @@ export const Collections: React.FC = () => {
           </button>
 
           <div className="flex flex-col gap-4 sm:gap-6 mb-6 shrink-0">
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
+            <div className="flex flex-row items-center gap-4 sm:gap-6 text-left">
               <div 
                 onClick={handleImageSelect}
-                className="w-28 h-28 sm:w-40 sm:h-40 shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-lg relative group cursor-pointer"
+                className="w-36 h-36 sm:w-48 sm:h-48 shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-2xl relative group cursor-pointer border border-white/10"
                 title="Нажмите, чтобы изменить обложку"
               >
                 <MediaCover src={playlistCover} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
               </div>
-              <div className="flex flex-col pb-1 sm:pb-2 items-center sm:items-start min-w-0 max-w-full">
+              <div className="flex flex-col justify-center items-start min-w-0 flex-1">
                 <div className="flex items-center gap-2 sm:gap-3 max-w-full">
-                  <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-[var(--text-main)] mb-1 sm:mb-2 tracking-tight truncate max-w-[240px] sm:max-w-none">{playlist.name}</h1>
-                  <button onClick={() => openCreatePlaylist('Изменить название', playlist.name, (name) => updatePlaylist(playlist.id, { name }))} className="p-1.5 sm:p-2 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface-hover)] rounded-full mb-1 sm:mb-2 shrink-0">
+                  <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-[var(--text-main)] mb-1 tracking-tight truncate max-w-[200px] sm:max-w-none">{playlist.name}</h1>
+                  <button onClick={() => openCreatePlaylist('Изменить название', playlist.name, (name) => updatePlaylist(playlist.id, { name }))} className="p-1.5 sm:p-2 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface-hover)] rounded-full mb-1 shrink-0">
                     <Pencil size={16} />
                   </button>
                 </div>
-                <p className="text-[13px] text-[var(--text-secondary)] font-medium">{playlist.tracks.length} треков</p>
+                <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">{playlist.tracks.length} треков</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+            <div className="flex flex-wrap items-center gap-2 justify-start">
               <button 
                 onClick={handlePlayPlaylist}
                 className="flex items-center gap-2 px-5 py-2 bg-[var(--accent)] text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)] rounded-full font-bold transition-colors text-sm mr-2"
@@ -832,7 +835,7 @@ export const Collections: React.FC = () => {
 
           <div className="w-full h-[1px] bg-[var(--bg-surface-hover)] mb-4" />
 
-          <div className="flex flex-col flex-1 w-full max-w-full overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 w-full max-w-full touch-pan-y">
             {playlist.tracks.length === 0 ? (
               <div className="text-center text-[var(--text-secondary)] mt-10">В этом плейлисте пока нет треков</div>
             ) : (
@@ -840,7 +843,8 @@ export const Collections: React.FC = () => {
                 axis="y"
                 values={playlist.tracks}
                 onReorder={(newOrder) => reorderPlaylistTracks(playlist.id, newOrder)}
-                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full overflow-hidden"
+                style={{ touchAction: 'pan-y' }}
+                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full touch-pan-y"
               >
                 {playlist.tracks.map((track, index) => {
                   const isActive = queue[currentTrackIndex]?.id === track.id;
