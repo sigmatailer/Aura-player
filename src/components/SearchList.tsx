@@ -674,7 +674,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
           </AnimatePresence>
         </form>
 
-        <div className={`w-full flex items-center gap-2 overflow-x-auto scrollbar-hide py-1 px-1 sm:justify-center justify-start transition-opacity duration-500 ${isHomeState && !query.trim() ? 'opacity-0 h-0 overflow-hidden pointer-events-none' : 'opacity-100 h-auto'}`}>
+        <div className={`w-full flex items-center gap-2 overflow-x-auto scrollbar-hide py-1 px-1 sm:justify-center justify-start transition-opacity duration-500 touch-pan-x flex-nowrap ${isHomeState && !query.trim() ? 'opacity-0 h-0 overflow-hidden pointer-events-none' : 'opacity-100 h-auto'}`}>
           {[
             { type: 'track' as SearchType, label: 'Треки', icon: <Music size={13} /> },
             { type: 'album' as SearchType, label: 'Альбомы', icon: <Disc3 size={13} /> },
@@ -701,7 +701,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
 
       <div className={`transition-all duration-500 ease-in-out ${isHomeState && recommendations.length > 0 ? 'opacity-100 h-auto mt-12' : 'opacity-0 h-0 overflow-hidden pointer-events-none'}`}>
         <h3 className="text-xl font-bold text-[var(--text-main)] mb-4 px-2">Рекомендуем вам</h3>
-        <div ref={carouselRef} className="flex overflow-x-auto gap-4 pb-4 scrollbar-hide px-2">
+        <div ref={carouselRef} className="flex overflow-x-auto gap-4 pb-4 scrollbar-hide px-2 touch-pan-x">
           {recommendations.map((track, i) => {
             const isQueuedAndActive = queue.findIndex(t => t.id === track.id) === currentTrackIndex && currentTrackIndex !== -1;
             const coverUrl = track.customCoverPath || track.originalCoverUrl || track.coverUrl || track.cover || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=200&auto=format&fit=crop';
@@ -760,7 +760,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
         </div>
       </div>
 
-      <div className={`relative z-0 flex flex-col flex-1 overflow-y-auto scrollbar-hide pb-24 transition-opacity duration-500 ${isHomeState ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto'}`}>
+      <div className={`relative z-0 flex flex-col flex-1 overflow-y-auto scrollbar-hide pb-32 min-h-0 transition-opacity duration-500 ${isHomeState ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto'}`}>
         {errorMsg && (
           <div className="text-red-500 text-center py-4 bg-red-500/10 rounded-2xl border border-red-500/20 mb-4">{errorMsg}</div>
         )}
@@ -819,14 +819,14 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                 transition={{ duration: 0.18 }}
                 key={result.id}
                 onClick={() => handlePlayResult(result)}
-                className={`group flex items-center justify-between p-2.5 pr-3 sm:pr-4 mb-2 rounded-[18px] border cursor-pointer transition-all duration-200 select-none w-full max-w-full overflow-hidden ${
+                className={`group flex items-center justify-between p-2.5 pr-3 sm:pr-4 mb-2 rounded-[18px] border cursor-pointer transition-all duration-200 select-none w-full max-w-full overflow-hidden shrink-0 min-h-[64px] ${
                   isQueuedAndActive 
                     ? 'bg-white/[0.08] border-[var(--accent)]/60 ring-1 ring-[var(--accent)]/30' 
                     : 'bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.05] hover:border-white/[0.12]'
                 }`}
               >
                 <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                  <div className={`relative w-12 h-12 overflow-hidden shrink-0 bg-black/40 shadow-sm ${
+                  <div className={`relative w-12 h-12 min-w-[48px] min-h-[48px] overflow-hidden shrink-0 bg-black/40 shadow-sm ${
                     isArtist ? 'rounded-full border border-white/10' : 'rounded-[14px]'
                   }`}>
                     {result.cover ? (
@@ -857,8 +857,8 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col truncate min-w-0 pr-1 sm:pr-2">
-                    <span className={`font-medium text-[15px] truncate ${isQueuedAndActive ? 'text-[var(--accent)]' : 'text-[#cccccc] group-hover:text-[var(--text-main)]'}`}>
+                  <div className="flex flex-col justify-center truncate min-w-0 pr-1 sm:pr-2">
+                    <span className={`font-semibold text-[14px] leading-snug truncate ${isQueuedAndActive ? 'text-[var(--accent)]' : 'text-[#e0e0e0] group-hover:text-[var(--text-main)]'}`}>
                       {result.title}
                     </span>
                     <span 
@@ -868,7 +868,7 @@ export const SearchList: React.FC<SearchListProps> = ({ onOpenSettings }) => {
                           useArtistStore.getState().openArtist(result.author, null, 'modal');
                         }
                       }}
-                      className={`text-[13px] text-[var(--text-secondary)] truncate ${!isArtist ? 'hover:text-[var(--text-main)] hover:underline cursor-pointer' : ''} transition-colors`}
+                      className={`text-[12px] text-[var(--text-secondary)] leading-snug truncate mt-0.5 ${!isArtist ? 'hover:text-[var(--text-main)] hover:underline cursor-pointer' : ''} transition-colors`}
                     >
                       {isArtist ? (
                         <>

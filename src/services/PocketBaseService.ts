@@ -1,4 +1,6 @@
 import PocketBase from 'pocketbase';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useAuthStore, CloudUser } from '../store/useAuthStore';
 import { useCollectionStore, Playlist, setCollectionSyncListener } from '../store/useCollectionStore';
 import { usePlayerStore } from '../store/usePlayerStore';
@@ -17,11 +19,33 @@ async function makePortableCover(url?: string): Promise<string> {
   }
 
   try {
-    const res = await fetch(url);
-    const blob = await res.blob();
+    let blob: Blob | null = null;
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+      const res = await fetch(url);
+      blob = await res.blob();
+    } else {
+      // Local file path (e.g. C:\... or /storage/... or file:// or asset://)
+      try {
+        const cleanPath = url.replace(/^file:\/\//, '');
+        const data = await readFile(cleanPath);
+        const ext = cleanPath.split('.').pop()?.toLowerCase() || 'jpg';
+        const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        blob = new Blob([data], { type: mime });
+      } catch {
+        try {
+          const res = await fetch(convertFileSrc(url));
+          blob = await res.blob();
+        } catch {
+          blob = null;
+        }
+      }
+    }
+
+    if (!blob) return url;
+
     return new Promise<string>((resolve) => {
       const img = new Image();
-      const objUrl = URL.createObjectURL(blob);
+      const objUrl = URL.createObjectURL(blob!);
       img.onload = () => {
         const maxDim = 800;
         let width = img.width;
@@ -657,8 +681,8 @@ class PocketBaseService {
         if (localPl) {
           localPl.cloudId = serverPl.id;
 
-          // Merge cover: if server has cover and local doesn't, take it
-          if (serverPl.coverUrl && !localPl.coverUrl) {
+          // Merge cover: if server has cover, take it
+          if (serverPl.coverUrl) {
             localPl.coverUrl = serverPl.coverUrl;
           }
 

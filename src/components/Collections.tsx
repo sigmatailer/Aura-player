@@ -62,7 +62,7 @@ const CollectionTrackItem: React.FC<{
       transition={{
         layout: { type: 'spring', damping: 26, stiffness: 280 }
       }}
-      className={`group flex items-center justify-between p-2 pr-4 mb-2 rounded-2xl border select-none cursor-pointer ${
+      className={`group flex items-center justify-between p-2 pr-2 sm:pr-4 mb-2 rounded-2xl border select-none cursor-pointer w-full max-w-full overflow-hidden shrink-0 ${
         isDragging
           ? 'transition-none bg-black/70 backdrop-blur-xl border-[var(--accent)] shadow-2xl shadow-black/90 ring-1 ring-[var(--accent)]/50'
           : isActive 
@@ -115,11 +115,6 @@ const CollectionTrackItem: React.FC<{
   );
 };
 
-const ActionPills = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-2">
-    {children}
-  </div>
-);
 
 const PillGroup = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] rounded-full border border-[var(--border-main)]">
@@ -283,6 +278,7 @@ export const Collections: React.FC = () => {
         {/* Playlists as circular covers matching PC sidebar */}
         {playlists.map(pl => {
           const isActive = view === 'playlist' && selectedPlaylistId === pl.id;
+          const plCover = pl.coverUrl || pl.tracks?.[0]?.customCoverPath || pl.tracks?.[0]?.originalCoverUrl;
           return (
             <button
               key={pl.id}
@@ -295,8 +291,8 @@ export const Collections: React.FC = () => {
               title={pl.name}
             >
               <div className="w-full h-full rounded-full overflow-hidden bg-[var(--bg-surface)]">
-                {pl.coverUrl ? (
-                  <MediaCover src={pl.coverUrl} className="w-full h-full object-cover" />
+                {plCover ? (
+                  <MediaCover src={plCover} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)] text-xs font-bold">
                     {pl.name.charAt(0).toUpperCase()}
@@ -375,6 +371,7 @@ export const Collections: React.FC = () => {
 
           {playlists.map(pl => {
             const isActive = view === 'playlist' && selectedPlaylistId === pl.id;
+            const plCover = pl.coverUrl || pl.tracks?.[0]?.customCoverPath || pl.tracks?.[0]?.originalCoverUrl;
             return (
               <button 
                 key={pl.id}
@@ -388,8 +385,8 @@ export const Collections: React.FC = () => {
                 data-tooltip-pos="right"
               >
                 <div className="w-full h-full rounded-full overflow-hidden bg-[var(--bg-surface)]">
-                  {pl.coverUrl ? (
-                    <MediaCover src={pl.coverUrl} className="w-full h-full object-cover" />
+                  {plCover ? (
+                    <MediaCover src={plCover} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-[#555]">
                       <Play size={18} fill="currentColor" />
@@ -407,7 +404,7 @@ export const Collections: React.FC = () => {
   const renderContent = () => {
     if (view === 'none') {
       return (
-        <div className="flex-1 h-full flex flex-col px-4 sm:px-8 md:px-12 pt-3 sm:pt-6 md:pt-8 pb-28 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 h-full flex flex-col px-4 sm:px-8 md:px-12 pt-3 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
           {/* Header */}
           <div className="flex items-center justify-between mb-5 sm:mb-8 shrink-0 gap-3">
             <div className="min-w-0">
@@ -521,6 +518,7 @@ export const Collections: React.FC = () => {
               {/* Playlist Cards */}
               {playlists.map((pl) => {
                 const isPlPlaying = queue.length > 0 && pl.tracks.length > 0 && queue.length === pl.tracks.length && queue[0].id === pl.tracks[0].id && isPlaying;
+                const plCover = pl.coverUrl || pl.tracks?.[0]?.customCoverPath || pl.tracks?.[0]?.originalCoverUrl;
                 return (
                   <div
                     key={pl.id}
@@ -531,8 +529,8 @@ export const Collections: React.FC = () => {
                     className="group relative flex flex-col p-3 rounded-[20px] bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] hover:border-white/[0.15] transition-all duration-300 cursor-pointer shadow-md w-[135px] sm:w-[155px] md:w-auto shrink-0"
                   >
                     <div className="relative aspect-square w-full rounded-[16px] overflow-hidden bg-black/40 mb-3 shadow-md">
-                      {pl.coverUrl ? (
-                        <MediaCover src={pl.coverUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      {plCover ? (
+                        <MediaCover src={plCover} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-white/30">
                           <Play size={32} fill="currentColor" />
@@ -570,28 +568,28 @@ export const Collections: React.FC = () => {
   
     if (view === 'liked') {
       return (
-        <div className="flex-1 h-full flex flex-col pl-10 pr-6 pt-8 pb-28 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 h-full flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
           {/* Back button */}
           <button
             onClick={() => setView('none')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/12 text-white/70 hover:text-white border border-white/10 text-xs font-semibold mb-6 w-fit transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/12 text-white/70 hover:text-white border border-white/10 text-xs font-semibold mb-4 sm:mb-6 w-fit transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
           >
             <ChevronLeft size={16} />
             Все коллекции
           </button>
 
-          <div className="flex flex-col gap-6 mb-6 shrink-0">
-            <div className="flex items-end gap-6">
-              <div className="w-40 h-40 rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
-                <Heart size={56} className="text-[var(--accent)]" strokeWidth={1.5} fill="currentColor" />
+          <div className="flex flex-col gap-4 sm:gap-6 mb-6 shrink-0">
+            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
+              <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0 shadow-lg">
+                <Heart size={44} className="text-[var(--accent)] sm:w-14 sm:h-14" strokeWidth={1.5} fill="currentColor" />
               </div>
-              <div className="flex flex-col pb-2">
-                <h1 className="text-5xl font-bold text-[var(--text-main)] mb-2 tracking-tight">Любимые</h1>
+              <div className="flex flex-col pb-1 sm:pb-2 items-center sm:items-start min-w-0">
+                <h1 className="text-3xl sm:text-5xl font-bold text-[var(--text-main)] mb-1 sm:mb-2 tracking-tight">Любимые</h1>
                 <p className="text-[13px] text-[var(--text-secondary)] font-medium">{likedTracks.length} треков</p>
               </div>
             </div>
 
-            <ActionPills>
+            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
               <button 
                 onClick={handlePlayLiked}
                 className="flex items-center gap-2 px-5 py-2 bg-[var(--accent)] text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)] rounded-full font-bold transition-colors text-sm mr-2"
@@ -600,12 +598,12 @@ export const Collections: React.FC = () => {
                 Играть все
               </button>
               <CollectionOptionsPopover tracks={likedTracks} />
-            </ActionPills>
+            </div>
           </div>
 
           <div className="w-full h-[1px] bg-[var(--bg-surface-hover)] mb-4" />
 
-          <div className="flex flex-col flex-1">
+          <div className="flex flex-col flex-1 w-full max-w-full overflow-hidden">
             {likedTracks.length === 0 ? (
               <div className="text-center text-[var(--text-secondary)] mt-10">Нет любимых треков. Нажмите на сердечко во время проигрывания, чтобы добавить.</div>
             ) : (
@@ -613,7 +611,7 @@ export const Collections: React.FC = () => {
                 axis="y"
                 values={likedTracks}
                 onReorder={reorderLikedTracks}
-                className="flex flex-col flex-1 list-none m-0 p-0"
+                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full overflow-hidden"
               >
                 {likedTracks.map((track, index) => {
                   const isActive = queue[currentTrackIndex]?.id === track.id;
@@ -654,28 +652,28 @@ export const Collections: React.FC = () => {
     
     if (view === 'downloaded') {
       return (
-        <div className="flex-1 h-full flex flex-col pl-10 pr-6 pt-8 pb-28 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 h-full flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
           {/* Back button */}
           <button
             onClick={() => setView('none')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/12 text-white/70 hover:text-white border border-white/10 text-xs font-semibold mb-6 w-fit transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/12 text-white/70 hover:text-white border border-white/10 text-xs font-semibold mb-4 sm:mb-6 w-fit transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
           >
             <ChevronLeft size={16} />
             Все коллекции
           </button>
 
-          <div className="flex flex-col gap-6 mb-6 shrink-0">
-            <div className="flex items-end gap-6">
-              <div className="w-40 h-40 rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
-                <Cloud size={56} className="text-[var(--accent)]" strokeWidth={1.5} fill="currentColor" />
+          <div className="flex flex-col gap-4 sm:gap-6 mb-6 shrink-0">
+            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
+              <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-3xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0 shadow-lg">
+                <Cloud size={44} className="text-[var(--accent)] sm:w-14 sm:h-14" strokeWidth={1.5} fill="currentColor" />
               </div>
-              <div className="flex flex-col pb-2">
-                <h1 className="text-5xl font-bold text-[var(--text-main)] mb-2 tracking-tight">Скачанные</h1>
+              <div className="flex flex-col pb-1 sm:pb-2 items-center sm:items-start min-w-0">
+                <h1 className="text-3xl sm:text-5xl font-bold text-[var(--text-main)] mb-1 sm:mb-2 tracking-tight">Скачанные</h1>
                 <p className="text-[13px] text-[var(--text-secondary)] font-medium">{downloadedTracks.length} треков</p>
               </div>
             </div>
 
-            <ActionPills>
+            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
               {downloadedTracks.length > 0 && (
                 <button 
                   onClick={handlePlayDownloaded}
@@ -692,12 +690,12 @@ export const Collections: React.FC = () => {
               </PillGroup>
 
               <CollectionOptionsPopover tracks={downloadedTracks} />
-            </ActionPills>
+            </div>
           </div>
 
           <div className="w-full h-[1px] bg-[var(--bg-surface-hover)] mb-4" />
 
-          <div className="flex flex-col flex-1">
+          <div className="flex flex-col flex-1 w-full max-w-full overflow-hidden">
             {downloadedTracks.length === 0 ? (
               <div className="text-center text-[var(--text-secondary)] mt-10">Здесь будут отображаться скачанные треки. Нажмите плюсик, чтобы добавить файлы.</div>
             ) : (
@@ -705,7 +703,7 @@ export const Collections: React.FC = () => {
                 axis="y"
                 values={downloadedTracks}
                 onReorder={reorderDownloadedTracks}
-                className="flex flex-col flex-1 list-none m-0 p-0"
+                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full overflow-hidden"
               >
                 {downloadedTracks.map((track, index) => {
                   const isActive = queue[currentTrackIndex]?.id === track.id;
@@ -756,6 +754,7 @@ export const Collections: React.FC = () => {
       if (!playlist) return null;
       const isPlaylistContext = queue.length > 0 && playlist.tracks.length > 0 && queue.length === playlist.tracks.length && queue[0].id === playlist.tracks[0].id;
       const isPlaylistPlaying = isPlaylistContext && isPlaying;
+      const playlistCover = playlist.coverUrl || playlist.tracks?.[0]?.customCoverPath || playlist.tracks?.[0]?.originalCoverUrl || defaultCoverUrl;
       const handlePlayPlaylist = () => {
         if (playlist.tracks.length === 0) return;
         if (isPlaylistContext) togglePlayPause(); else { playContext(playlist.tracks, 0); }
@@ -771,37 +770,37 @@ export const Collections: React.FC = () => {
         }
       };
       return (
-        <div className="flex-1 h-full flex flex-col pl-10 pr-6 pt-8 pb-28 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 h-full flex flex-col px-4 sm:px-6 md:pl-10 md:pr-6 pt-4 sm:pt-6 md:pt-8 pb-32 overflow-y-auto overflow-x-hidden w-full max-w-full scrollbar-hide">
           {/* Back button */}
           <button
             onClick={() => setView('none')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/12 text-white/70 hover:text-white border border-white/10 text-xs font-semibold mb-6 w-fit transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/12 text-white/70 hover:text-white border border-white/10 text-xs font-semibold mb-4 sm:mb-6 w-fit transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
           >
             <ChevronLeft size={16} />
             Все коллекции
           </button>
 
-          <div className="flex flex-col gap-6 mb-6 shrink-0">
-            <div className="flex items-end gap-6">
+          <div className="flex flex-col gap-4 sm:gap-6 mb-6 shrink-0">
+            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
               <div 
                 onClick={handleImageSelect}
-                className="w-40 h-40 shrink-0 rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-lg relative group cursor-pointer"
+                className="w-28 h-28 sm:w-40 sm:h-40 shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden bg-[var(--bg-surface-hover)] shadow-lg relative group cursor-pointer"
                 title="Нажмите, чтобы изменить обложку"
               >
-                <MediaCover src={playlist.coverUrl || defaultCoverUrl} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <MediaCover src={playlistCover} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
               </div>
-              <div className="flex flex-col pb-2">
-                <div className="flex items-center gap-3">
-                  <h1 className="text-5xl font-bold text-[var(--text-main)] mb-2 tracking-tight">{playlist.name}</h1>
-                  <button onClick={() => openCreatePlaylist('Изменить название', playlist.name, (name) => updatePlaylist(playlist.id, { name }))} className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface-hover)] rounded-full mb-2">
-                    <Pencil size={18} />
+              <div className="flex flex-col pb-1 sm:pb-2 items-center sm:items-start min-w-0 max-w-full">
+                <div className="flex items-center gap-2 sm:gap-3 max-w-full">
+                  <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-[var(--text-main)] mb-1 sm:mb-2 tracking-tight truncate max-w-[240px] sm:max-w-none">{playlist.name}</h1>
+                  <button onClick={() => openCreatePlaylist('Изменить название', playlist.name, (name) => updatePlaylist(playlist.id, { name }))} className="p-1.5 sm:p-2 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-all bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface-hover)] rounded-full mb-1 sm:mb-2 shrink-0">
+                    <Pencil size={16} />
                   </button>
                 </div>
                 <p className="text-[13px] text-[var(--text-secondary)] font-medium">{playlist.tracks.length} треков</p>
               </div>
             </div>
 
-            <ActionPills>
+            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
               <button 
                 onClick={handlePlayPlaylist}
                 className="flex items-center gap-2 px-5 py-2 bg-[var(--accent)] text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)] rounded-full font-bold transition-colors text-sm mr-2"
@@ -828,12 +827,12 @@ export const Collections: React.FC = () => {
                 <Trash2 size={16} />
               </button>
 
-            </ActionPills>
+            </div>
           </div>
 
           <div className="w-full h-[1px] bg-[var(--bg-surface-hover)] mb-4" />
 
-          <div className="flex flex-col flex-1">
+          <div className="flex flex-col flex-1 w-full max-w-full overflow-hidden">
             {playlist.tracks.length === 0 ? (
               <div className="text-center text-[var(--text-secondary)] mt-10">В этом плейлисте пока нет треков</div>
             ) : (
@@ -841,7 +840,7 @@ export const Collections: React.FC = () => {
                 axis="y"
                 values={playlist.tracks}
                 onReorder={(newOrder) => reorderPlaylistTracks(playlist.id, newOrder)}
-                className="flex flex-col flex-1 list-none m-0 p-0"
+                className="flex flex-col flex-1 list-none m-0 p-0 w-full max-w-full overflow-hidden"
               >
                 {playlist.tracks.map((track, index) => {
                   const isActive = queue[currentTrackIndex]?.id === track.id;

@@ -68,7 +68,7 @@ const BottomPlayer: React.FC = () => {
     <div className="w-full px-4 pb-3 pt-1 shrink-0 select-none z-50 bg-transparent relative">
       {/* Floating Player Card */}
       <div 
-        className="w-full h-[68px] rounded-[20px] relative flex items-center px-3.5 sm:px-4 justify-between shadow-2xl shadow-black/60 transition-all duration-300 border"
+        className="w-full h-[68px] rounded-[20px] overflow-hidden relative flex items-center px-3.5 sm:px-4 justify-between shadow-2xl shadow-black/60 transition-all duration-300 border"
         style={{ 
           backgroundColor: transparencyEnabled && customWallpaper
             ? `rgba(16, 16, 22, ${Math.max(0.10, (windowOpacity / 100) * 0.78)})`
@@ -313,7 +313,7 @@ const BottomPlayer: React.FC = () => {
         {/* Integrated Red Progress Bar running along the very bottom edge */}
         <div 
           ref={progressBarRef}
-          className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-white/5 cursor-pointer group hover:h-[3.5px] transition-all"
+          className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-white/5 cursor-pointer group hover:h-[3.5px] transition-all rounded-b-[20px] overflow-hidden"
           onClick={handleProgressClick}
           title="Перемотка"
         >

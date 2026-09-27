@@ -29,10 +29,7 @@ export class AudioService {
 
   constructor() {
     this.audio = new Audio();
-    // Do not set crossOrigin on mobile (iOS/Android) so native stream playback has no CORS restrictions
-    if (!isMobile) {
-      this.audio.crossOrigin = 'anonymous';
-    }
+    this.audio.crossOrigin = 'anonymous';
     
     // Инициализируем громкость с учетом кривой
     this.applyVolume(usePlayerStore.getState().volume ?? 1);
@@ -200,8 +197,8 @@ export class AudioService {
         this.applyVolume(state.volume);
       }
       
-      // Sync EQ (only initialize if custom EQ is set and not on mobile)
-      const hasCustomEq = !isMobile && (state.eqBands.some(val => val !== 0) || state.eqPreAmp !== 0);
+      // Sync EQ
+      const hasCustomEq = state.eqBands.some(val => val !== 0) || state.eqPreAmp !== 0;
       if (hasCustomEq) {
         this.initEqualizer();
       }
@@ -334,12 +331,6 @@ export class AudioService {
   }
 
   public initEqualizer() {
-    // iOS WebKit and Android WebView immediately suspend AudioContext in the background,
-    // which completely cuts off audio if createMediaElementSource is connected.
-    // Furthermore, on Android WebView, createMediaElementSource has a known Chromium bug
-    // that stalls audio buffers after 20-30 seconds.
-    // Keep native direct audio element playback on mobile platforms to guarantee 100% reliable background playback!
-    if (isMobile) return;
     if (this.audioCtx) return;
     try {
       this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
@@ -419,6 +410,10 @@ export class AudioService {
   }
 
   public setEqBand(index: number, gainDb: number) {
+    if (!this.audioCtx) {
+      this.initEqualizer();
+    }
+    this.resumeAudioContext();
     if (this.eqBands[index]) {
       if (this.audioCtx && this.audioCtx.state === 'running') {
         this.eqBands[index].gain.setTargetAtTime(gainDb, this.audioCtx.currentTime, 0.03);
@@ -429,6 +424,10 @@ export class AudioService {
   }
 
   public setPreAmp(gainDb: number) {
+    if (!this.audioCtx) {
+      this.initEqualizer();
+    }
+    this.resumeAudioContext();
     if (this.gainNode) {
       const multiplier = Math.pow(10, gainDb / 20);
       if (this.audioCtx && this.audioCtx.state === 'running') {
@@ -449,8 +448,8 @@ export class AudioService {
   }
 
   public resumeAudioContext() {
-    if (!isMobile && this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().catch(() => {});
     }
   }
 

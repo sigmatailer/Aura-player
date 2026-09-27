@@ -45,6 +45,11 @@ export const EqualizerPopover: React.FC<EqualizerPopoverProps> = ({ onClose, tri
 
   const currentBands = dragBands || eqBands;
 
+  useEffect(() => {
+    audioService.initEqualizer();
+    audioService.resumeAudioContext();
+  }, []);
+
   // Close when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {

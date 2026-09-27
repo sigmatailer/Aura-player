@@ -100,7 +100,11 @@ export const EqualizerModal: React.FC = () => {
   const { eqPreset, eqBands, eqPreAmp, setEqPreset, setEqBand, setEqPreAmp } = usePlayerStore();
 
   useEffect(() => {
-    const handler = () => setIsOpen(true);
+    const handler = () => {
+      audioService.initEqualizer();
+      audioService.resumeAudioContext();
+      setIsOpen(true);
+    };
     document.addEventListener('toggle-eq', handler);
     return () => document.removeEventListener('toggle-eq', handler);
   }, []);
