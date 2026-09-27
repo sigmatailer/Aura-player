@@ -41,6 +41,7 @@ export const EqualizerPopover: React.FC<EqualizerPopoverProps> = ({ onClose, tri
 
   useEffect(() => {
     audioService.initEqualizer();
+    audioService.resumeAudioContext();
   }, []);
 
   useEffect(() => {

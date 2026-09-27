@@ -11,6 +11,7 @@ import {
 import { ArtistLinks } from './ArtistLinks';
 import { TrackOptionsPopover } from './TrackOptionsPopover';
 import { EqualizerPopover } from './EqualizerPopover';
+import { audioService } from '../services/AudioService';
 
 const TopPlayer: React.FC = () => {
   const { 
@@ -200,7 +201,11 @@ const TopPlayer: React.FC = () => {
             <button 
               ref={eqButtonRef}
               data-eq-trigger="true"
-              onClick={() => setIsEqOpen(prev => !prev)}
+              onClick={() => {
+                audioService.initEqualizer();
+                audioService.resumeAudioContext();
+                setIsEqOpen(prev => !prev);
+              }}
               className={`p-1.5 rounded-full flex items-center justify-center transition-all ${
                 isEqOpen 
                   ? 'text-[var(--accent)] scale-110' 

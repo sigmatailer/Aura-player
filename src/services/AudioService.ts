@@ -30,7 +30,21 @@ export class AudioService {
 
   constructor() {
     this.audio = new Audio();
-    this.audio.crossOrigin = 'anonymous';
+    this.audio.removeAttribute('crossorigin');
+    this.audio.crossOrigin = null;
+
+    // Mobile user-gesture unlock for AudioContext
+    if (typeof window !== 'undefined') {
+      const unlockAudio = () => {
+        if (this.audioCtx && this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume().catch(() => {});
+        }
+      };
+      window.addEventListener('touchstart', unlockAudio, { passive: true });
+      window.addEventListener('touchend', unlockAudio, { passive: true });
+      window.addEventListener('click', unlockAudio, { passive: true });
+      window.addEventListener('keydown', unlockAudio, { passive: true });
+    }
     
     // Инициализируем громкость с учетом кривой
     this.applyVolume(usePlayerStore.getState().volume ?? 1);
@@ -373,9 +387,14 @@ export class AudioService {
   }
 
   public initEqualizer() {
-    if (this.audioCtx) return;
+    if (this.audioCtx) {
+      this.resumeAudioContext();
+      return;
+    }
     try {
-      this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      this.audioCtx = new AudioCtx({
         latencyHint: 'playback'
       });
       this.resumeAudioContext();
@@ -774,6 +793,9 @@ export class AudioService {
       const wasPlaying = state.isPlaying;
       const curTime = (this.audio.currentTime > 0 && this.audio.currentTime < 32) ? this.audio.currentTime : 0;
 
+      this.audio.removeAttribute('crossorigin');
+      this.audio.crossOrigin = null;
+
       if (fallbackUrl.startsWith('local:')) {
         const actualPath = fallbackUrl.substring(6);
         if (isMobile) {
@@ -853,6 +875,8 @@ export class AudioService {
 
     if (cachedLocalPath) {
       if (loadId !== this.currentLoadId) return;
+      this.audio.removeAttribute('crossorigin');
+      this.audio.crossOrigin = null;
       if (isMobile) {
         try {
           const fileData = await readFile(cachedLocalPath);
@@ -897,6 +921,8 @@ export class AudioService {
           return;
         }
         
+        this.audio.removeAttribute('crossorigin');
+        this.audio.crossOrigin = null;
         if (audioUrl.startsWith('local:')) {
           const actualPath = audioUrl.substring(6);
           if (isMobile) {
@@ -930,9 +956,23 @@ export class AudioService {
       }
     } else if (track.filePath.startsWith('http') || track.filePath.startsWith('blob:')) {
       if (loadId !== this.currentLoadId) return;
-      this.audio.src = track.filePath;
+      this.audio.removeAttribute('crossorigin');
+      this.audio.crossOrigin = null;
+      if (isMobile && track.filePath.startsWith('http')) {
+        try {
+          const bytes = await invoke<number[]>('download_audio_temp', { url: track.filePath });
+          const blob = new Blob([new Uint8Array(bytes)], { type: 'audio/mpeg' });
+          this.audio.src = URL.createObjectURL(blob);
+        } catch {
+          this.audio.src = track.filePath;
+        }
+      } else {
+        this.audio.src = track.filePath;
+      }
     } else {
       if (loadId !== this.currentLoadId) return;
+      this.audio.removeAttribute('crossorigin');
+      this.audio.crossOrigin = null;
       if (isMobile) {
         try {
           const fileData = await readFile(track.filePath);
