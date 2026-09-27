@@ -42,7 +42,7 @@ function App() {
   const { t, autoSimilar } = useAppSettingsStore();
   const isMiniPlayer = usePlayerStore(state => state.isMiniPlayer);
   const miniPlayerStyle = usePlayerStore(state => state.miniPlayerStyle);
-  const { queue, currentTrackIndex, setQueue } = usePlayerStore();
+  const { queue, currentTrackIndex, setQueue, isWaveActive } = usePlayerStore();
   const [isFetchingVibe, setIsFetchingVibe] = useState(false);
   const { 
     customWallpaper, wallpaperOpacity, wallpaperSpeed,
@@ -81,7 +81,7 @@ function App() {
   useEffect(() => {
     const checkVibe = async () => {
       const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
-      const isVibeMode = queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
+      const isVibeMode = isWaveActive && queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
       const shouldLoadMore = (isVibeMode || autoSimilar) && queue.length > 0 && (queue.length - currentTrackIndex <= 2) && !isFetchingVibe;
       
       if (shouldLoadMore && currentTrack) {
@@ -102,10 +102,11 @@ function App() {
           
           const data = JSON.parse(response);
           if (data.result && data.result.sequence) {
+            const prefix = isVibeMode ? 'vibe_' : 'similar_';
             const newTracks = data.result.sequence.map((item: any) => {
               const t = item.track;
               return {
-                id: 'vibe_' + t.id + '_' + Date.now() + Math.random(),
+                id: prefix + t.id + '_' + Date.now() + Math.random(),
                 title: t.title,
                 artist: t.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist',
                 album: 'Yandex Music',

@@ -16,7 +16,7 @@ interface VibeArtist {
 }
 
 export const MyVibe: React.FC = () => {
-  const { queue, currentTrackIndex, history, playContext, setHistoryDrawerOpen } = usePlayerStore();
+  const { queue, currentTrackIndex, history, playContext, setHistoryDrawerOpen, isWaveActive } = usePlayerStore();
   const { likedTracks } = useCollectionStore();
   const { openArtist } = useArtistStore();
   const { customWallpaper, transparencyEnabled, glassStrength, glassBlur, windowOpacity } = useThemeStore();
@@ -49,7 +49,7 @@ export const MyVibe: React.FC = () => {
   const forYouRef = useRef<HTMLDivElement>(null);
 
   const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
-  const isVibeMode = queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
+  const isVibeMode = isWaveActive && queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
 
   // Mouse wheel horizontal scroll helper
   const setupWheelScroll = (el: HTMLElement | null) => {

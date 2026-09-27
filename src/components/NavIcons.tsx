@@ -159,25 +159,6 @@ export const NavCollectionIcon: React.FC<IconProps> = ({ size = 25, className = 
 };
 
 export const NavSettingsIcon: React.FC<IconProps> = ({ size = 25, className = '', active = false }) => {
-  if (active) {
-    return (
-      <svg 
-        width={size} 
-        height={size} 
-        viewBox="0 0 24 24" 
-        fill="currentColor" 
-        className={className}
-      >
-        {/* Solid filled octagon silhouette with center circle cutout */}
-        <path 
-          fillRule="evenodd" 
-          clipRule="evenodd" 
-          d="M 10.2 3.4 H 13.8 C 14.8 3.4 15.7 3.8 16.4 4.5 L 18 6.1 C 18.7 6.8 19.2 7.6 19.2 8.5 V 15.5 C 19.2 16.4 18.7 17.2 18 17.9 L 16.4 19.5 C 15.7 20.2 14.8 20.6 13.8 20.6 H 10.2 C 9.2 20.6 8.3 20.2 7.6 19.5 L 6 17.9 C 5.3 17.2 4.8 16.4 4.8 15.5 V 8.5 C 4.8 7.6 5.3 6.8 6 6.1 L 7.6 4.5 C 8.3 3.8 9.2 3.4 10.2 3.4 Z M 12 8.6 C 10.1 8.6 8.6 10.1 8.6 12 C 8.6 13.9 10.1 15.4 12 15.4 C 13.9 15.4 15.4 13.9 15.4 12 C 15.4 10.1 13.9 8.6 12 8.6 Z" 
-        />
-      </svg>
-    );
-  }
-
   return (
     <svg 
       width={size} 
@@ -185,17 +166,13 @@ export const NavSettingsIcon: React.FC<IconProps> = ({ size = 25, className = ''
       viewBox="0 0 24 24" 
       fill="none" 
       stroke="currentColor" 
-      strokeWidth={1.9} 
+      strokeWidth={active ? 2.3 : 1.9} 
       strokeLinecap="round" 
       strokeLinejoin="round" 
       className={className}
     >
-      {/* Upper-left segment matching Screenshot 1 */}
-      <path d="M 4.8 16.2 V 8.6 C 4.8 7.7 5.3 6.9 6 6.2 L 7.6 4.6 C 8.3 3.9 9.2 3.5 10.2 3.5 H 13.8 C 14.8 3.5 15.7 3.9 16.4 4.6 L 18 6.2 C 18.7 6.9 19.2 7.7 19.2 8.6 V 10.6" />
-      {/* Lower-right segment with signature opening */}
-      <path d="M 19.2 13.4 V 15.4 C 19.2 16.3 18.7 17.1 18 17.8 L 16.4 19.4 C 15.7 20.1 14.8 20.5 13.8 20.5 H 10.2 C 9.4 20.5 8.7 20.2 8.1 19.7 L 8 19.6" />
-      {/* Center concentric ring */}
-      <circle cx="12" cy="12" r="3.3" strokeWidth={1.8} />
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" strokeWidth={active ? 2.3 : 1.9} />
     </svg>
   );
 };

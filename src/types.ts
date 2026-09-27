@@ -26,6 +26,8 @@ export interface PlayerState {
   isFullscreen: boolean;
   isMiniPlayer: boolean;
   miniPlayerStyle: 'square' | 'rectangle' | 'island';
+  isWaveActive: boolean;
+  setIsWaveActive: (active: boolean) => void;
   
   // History
   history: Track[];
@@ -42,7 +44,7 @@ export interface PlayerState {
   // Действия
   setQueue: (tracks: Track[]) => void;
   clearQueue: () => void;
-  playContext: (tracks: Track[], index: number) => void;
+  playContext: (tracks: Track[], index: number, isWave?: boolean) => void;
   addTrack: (track: Track) => void;
   addTracks: (tracks: Track[]) => void;
   removeTrack: (trackId: string) => void;

@@ -16,6 +16,8 @@ export const usePlayerStore = create<PlayerState>()(
       isFullscreen: false,
       isMiniPlayer: false,
       miniPlayerStyle: 'square',
+      isWaveActive: false,
+      setIsWaveActive: (isWaveActive) => set({ isWaveActive }),
 
       history: [],
       addToHistory: (track) => set((state) => {
@@ -48,9 +50,10 @@ export const usePlayerStore = create<PlayerState>()(
           currentTrackIndex: -1,
           isPlaying: false,
           progress: 0,
+          isWaveActive: false,
         });
       },
-      playContext: (tracks, index) => set({ queue: tracks, currentTrackIndex: index, isPlaying: true, progress: 0 }),
+      playContext: (tracks, index, isWave = false) => set({ queue: tracks, currentTrackIndex: index, isPlaying: true, progress: 0, isWaveActive: isWave }),
       
       addTrack: (track) => set((state) => ({ 
         queue: [...state.queue, track] 

@@ -52,7 +52,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     windowOpacity, setWindowOpacity,
     glassStrength, setGlassStrength,
     glassBlur, setGlassBlur,
-    customWallpaper, trackTheme
+    trackTheme
   } = useThemeStore();
   const { getCacheStats, clearCache } = useCacheStore();
 
@@ -551,17 +551,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       }
       className="fixed sm:absolute inset-0 sm:top-3 sm:bottom-3 sm:left-3 sm:right-auto w-full sm:w-[55%] sm:min-w-[560px] sm:max-w-[720px] rounded-none sm:rounded-[32px] border-0 sm:border z-[90] flex flex-col overflow-hidden select-none text-[var(--text-main)] font-sans"
       style={{ 
-        backgroundColor: transparencyEnabled && customWallpaper
-          ? `rgba(14, 14, 18, ${Math.max(0.12, (windowOpacity / 100) * 0.85)})`
-          : 'var(--bg-surface)',
-        backdropFilter: (typeof window !== 'undefined' && window.innerWidth >= 768) && transparencyEnabled && customWallpaper && glassBlur > 0
-          ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
-          : undefined,
-        WebkitBackdropFilter: (typeof window !== 'undefined' && window.innerWidth >= 768) && transparencyEnabled && customWallpaper && glassBlur > 0
-          ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
-          : undefined,
-        borderColor: transparencyEnabled ? `rgba(255, 255, 255, ${0.08 + (glassStrength / 100) * 0.16})` : 'var(--border-main)',
-        boxShadow: `0 30px 90px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,${0.08 + (glassStrength / 100) * 0.20})`
+        backgroundColor: 'var(--bg-surface)',
+        borderColor: 'var(--border-main)',
+        boxShadow: '0 30px 90px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06)'
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -1389,75 +1381,81 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                         className="space-y-5 overflow-hidden pt-1"
                       >
                         {/* 1. Непрозрачность */}
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 py-1">
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[13.5px] font-bold text-white">Непрозрачность</h5>
                             <p className="text-xs text-white/50 mt-0.5">Прозрачность фона окна</p>
                           </div>
-                          <div className="flex items-center gap-3.5 w-52 shrink-0">
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={windowOpacity}
-                              onChange={(e) => setWindowOpacity(parseInt(e.target.value, 10))}
-                              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                              style={{
-                                background: `linear-gradient(to right, var(--accent) calc((100% - 10px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 5px), rgba(255,255,255,0.1) calc((100% - 10px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 5px))`
-                              }}
-                            />
-                            <span className="w-10 text-right text-xs font-mono font-bold text-white/80 shrink-0">
+                          <div className="flex items-center gap-3 w-full sm:w-56 shrink-0">
+                            <div className="relative flex-1 py-3 flex items-center touch-none">
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={windowOpacity}
+                                onChange={(e) => setWindowOpacity(parseInt(e.target.value, 10))}
+                                className="w-full h-2 sm:h-1.5 bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 sm:[&::-webkit-slider-thumb]:w-3.5 sm:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-black/30 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+                                style={{
+                                  background: `linear-gradient(to right, var(--accent) calc((100% - 14px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 7px), rgba(255,255,255,0.12) calc((100% - 14px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 7px))`
+                                }}
+                              />
+                            </div>
+                            <span className="w-12 text-right text-xs font-mono font-bold text-white/90 shrink-0">
                               {windowOpacity}%
                             </span>
                           </div>
                         </div>
 
                         {/* 2. Сила стекла */}
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 py-1">
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[13.5px] font-bold text-white">Сила стекла</h5>
                             <p className="text-xs text-white/50 mt-0.5">Интенсивность отражения, насыщенности и эффекта акрила</p>
                           </div>
-                          <div className="flex items-center gap-3.5 w-52 shrink-0">
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={glassStrength}
-                              onChange={(e) => setGlassStrength(parseInt(e.target.value, 10))}
-                              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                              style={{
-                                background: `linear-gradient(to right, var(--accent) calc((100% - 10px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 5px), rgba(255,255,255,0.1) calc((100% - 10px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 5px))`
-                              }}
-                            />
-                            <span className="w-10 text-right text-xs font-mono font-bold text-white/80 shrink-0">
+                          <div className="flex items-center gap-3 w-full sm:w-56 shrink-0">
+                            <div className="relative flex-1 py-3 flex items-center touch-none">
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={glassStrength}
+                                onChange={(e) => setGlassStrength(parseInt(e.target.value, 10))}
+                                className="w-full h-2 sm:h-1.5 bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 sm:[&::-webkit-slider-thumb]:w-3.5 sm:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-black/30 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+                                style={{
+                                  background: `linear-gradient(to right, var(--accent) calc((100% - 14px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 7px), rgba(255,255,255,0.12) calc((100% - 14px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 7px))`
+                                }}
+                              />
+                            </div>
+                            <span className="w-12 text-right text-xs font-mono font-bold text-white/90 shrink-0">
                               {glassStrength}%
                             </span>
                           </div>
                         </div>
 
                         {/* 3. Размытие стекла */}
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 py-1">
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[13.5px] font-bold text-white">Размытие стекла</h5>
                             <p className="text-xs text-white/50 mt-0.5">Радиус глубокого акрилового размытия (0–80px)</p>
                           </div>
-                          <div className="flex items-center gap-3.5 w-52 shrink-0">
-                            <input
-                              type="range"
-                              min="0"
-                              max="80"
-                              step="1"
-                              value={glassBlur}
-                              onChange={(e) => setGlassBlur(parseInt(e.target.value, 10))}
-                              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                              style={{
-                                background: `linear-gradient(to right, var(--accent) calc((100% - 10px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 5px), rgba(255,255,255,0.1) calc((100% - 10px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 5px))`
-                              }}
-                            />
-                            <span className="w-10 text-right text-xs font-mono font-bold text-white/80 shrink-0">
+                          <div className="flex items-center gap-3 w-full sm:w-56 shrink-0">
+                            <div className="relative flex-1 py-3 flex items-center touch-none">
+                              <input
+                                type="range"
+                                min="0"
+                                max="80"
+                                step="1"
+                                value={glassBlur}
+                                onChange={(e) => setGlassBlur(parseInt(e.target.value, 10))}
+                                className="w-full h-2 sm:h-1.5 bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 sm:[&::-webkit-slider-thumb]:w-3.5 sm:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-black/30 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+                                style={{
+                                  background: `linear-gradient(to right, var(--accent) calc((100% - 14px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 7px), rgba(255,255,255,0.12) calc((100% - 14px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 7px))`
+                                }}
+                              />
+                            </div>
+                            <span className="w-12 text-right text-xs font-mono font-bold text-white/90 shrink-0">
                               {glassBlur}px
                             </span>
                           </div>

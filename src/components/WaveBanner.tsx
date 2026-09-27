@@ -27,7 +27,7 @@ const MOOD_OPTIONS: MoodItem[] = [
 ];
 
 export const WaveBanner: React.FC<WaveBannerProps> = ({ onArtistsUpdate, className = '' }) => {
-  const { queue, currentTrackIndex, isPlaying, togglePlayPause, playContext, history } = usePlayerStore();
+  const { queue, currentTrackIndex, isPlaying, togglePlayPause, playContext, history, isWaveActive, setIsWaveActive } = usePlayerStore();
   const { likedTracks } = useCollectionStore();
   const { getActiveTheme, transparencyEnabled, windowOpacity, glassBlur, glassStrength } = useThemeStore();
   const activeTheme = getActiveTheme();
@@ -37,7 +37,7 @@ export const WaveBanner: React.FC<WaveBannerProps> = ({ onArtistsUpdate, classNa
   const [selectedMoodId, setSelectedMoodId] = useState<string>('all');
 
   const currentTrack = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null;
-  const isVibeMode = queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
+  const isVibeMode = isWaveActive && queue.length > 0 && currentTrack?.id?.startsWith('vibe_');
 
   // Preview tracks (upcoming in wave or from recent/liked)
   const previewTracks: Track[] = (() => {
@@ -75,7 +75,8 @@ export const WaveBanner: React.FC<WaveBannerProps> = ({ onArtistsUpdate, classNa
       }
 
       if (tracks.length > 0) {
-        playContext(tracks, 0);
+        setIsWaveActive(true);
+        playContext(tracks, 0, true);
       }
     } catch (err) {
       console.error('Failed to launch Wave:', err);
