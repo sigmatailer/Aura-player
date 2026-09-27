@@ -323,14 +323,18 @@ export const EqualizerPopover: React.FC<EqualizerPopoverProps> = ({ onClose, tri
         <span className="text-[11px] font-medium text-[var(--text-secondary)] shrink-0">Усиление</span>
         <input
           type="range"
-          min="-16"
-          max="16"
+          min="-20"
+          max="20"
           step="1"
           value={eqPreAmp}
-          onChange={(e) => setEqPreAmp(parseFloat(e.target.value))}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            audioService.setPreAmp(val);
+            setEqPreAmp(val);
+          }}
           className="flex-1 h-[4px] bg-[#1c1c22] border border-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-[var(--accent)] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:outline-none hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
           style={{
-            background: `linear-gradient(to right, var(--accent) ${((eqPreAmp + 16) / 32) * 100}%, transparent ${((eqPreAmp + 16) / 32) * 100}%)`
+            background: `linear-gradient(to right, var(--accent) ${((eqPreAmp + 20) / 40) * 100}%, transparent ${((eqPreAmp + 20) / 40) * 100}%)`
           }}
         />
         <span className="text-[11px] font-mono text-[var(--text-main)] min-w-[28px] text-right font-medium">

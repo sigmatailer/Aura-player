@@ -417,44 +417,44 @@ export class AudioService {
         this.eqBands.push(filter);
       });
 
-      // Transparent peak safety limiter (prevents 0dBFS distortion without squashing dynamic range or lowering volume)
-      const antiClipLimiter = this.audioCtx.createDynamicsCompressor();
-      antiClipLimiter.threshold.value = -0.5; // Only acts on clipping peaks
-      antiClipLimiter.knee.value = 2.0;       // Tight transparent knee
-      antiClipLimiter.ratio.value = 12.0;
-      antiClipLimiter.attack.value = 0.002;   // 2ms fast attack
-      antiClipLimiter.release.value = 0.05;   // 50ms fast transparent release (no volume ducking)
-
-      // Dedicated Volume Gain Node (single source of volume truth)
+      // 1. Dedicated Master Volume Gain Node (Linear volume matching standard media players)
       this.volumeNode = this.audioCtx.createGain();
       const currentVol = usePlayerStore.getState().volume ?? 1;
-      const curved = Math.max(0, Math.min(1, Math.pow(currentVol, 2)));
-      this.volumeNode.gain.value = curved;
+      const volumeGain = Math.max(0, Math.min(1, currentVol));
+      this.volumeNode.gain.value = volumeGain;
 
-      lastNode.connect(antiClipLimiter);
-      antiClipLimiter.connect(this.volumeNode);
-      this.volumeNode.connect(this.audioCtx.destination);
+      // 2. Final transparent peak safety limiter at final output (protects DAC/speakers from clipping without squashing quiet music)
+      const antiClipLimiter = this.audioCtx.createDynamicsCompressor();
+      antiClipLimiter.threshold.value = -0.3; // Only acts on actual digital 0dBFS peaks
+      antiClipLimiter.knee.value = 1.0;
+      antiClipLimiter.ratio.value = 20.0;
+      antiClipLimiter.attack.value = 0.001;   // 1ms peak catch
+      antiClipLimiter.release.value = 0.04;   // 40ms fast transparent release
+
+      lastNode.connect(this.volumeNode);
+      this.volumeNode.connect(antiClipLimiter);
+      antiClipLimiter.connect(this.audioCtx.destination);
     } catch (e) {
       console.error('Equalizer initialization failed:', e);
     }
   }
 
   public applyVolume(volume: number) {
-    const curved = Math.max(0, Math.min(1, Math.pow(volume, 2)));
+    const volumeGain = Math.max(0, Math.min(1, volume));
     if (this.volumeNode && this.audioCtx) {
-      // AudioContext active: pass unity gain from audio element, let volumeNode control volume
+      // AudioContext active: pass unity gain from audio element, let volumeNode control volume linearly
       try {
         this.audio.volume = 1.0;
       } catch {}
       if (this.audioCtx.state === 'running') {
-        this.volumeNode.gain.setTargetAtTime(curved, this.audioCtx.currentTime, 0.015);
+        this.volumeNode.gain.setValueAtTime(volumeGain, this.audioCtx.currentTime);
       } else {
-        this.volumeNode.gain.value = curved;
+        this.volumeNode.gain.value = volumeGain;
       }
     } else {
       // AudioContext not active yet: audio element controls volume directly
       try {
-        this.audio.volume = curved;
+        this.audio.volume = volumeGain;
       } catch {}
     }
   }
