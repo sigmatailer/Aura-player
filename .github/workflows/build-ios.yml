@@ -42,6 +42,7 @@ jobs:
           if [ ! -d "src-tauri/gen/apple" ]; then
             npx tauri ios init
           fi
+          npx @tauri-apps/cli icon app-icon.png --ios-color "#000000" || true
 
       - name: Configure iOS Background Audio
         run: |

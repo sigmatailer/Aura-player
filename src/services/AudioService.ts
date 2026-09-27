@@ -18,6 +18,7 @@ export class AudioService {
   private audio: HTMLAudioElement;
   private currentLoadId: number = 0;
   private isLoadingTrack: boolean = false;
+  private isFallingBack: boolean = false;
 
   // Equalizer & Audio Graph
   private audioCtx: AudioContext | null = null;
@@ -146,11 +147,42 @@ export class AudioService {
       }
     });
 
-    this.audio.addEventListener('error', () => {
+    this.audio.addEventListener('loadedmetadata', () => {
+      const dur = this.audio.duration;
+      const state = usePlayerStore.getState();
+      const currentTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+
+      // Intercept 29-30s preview tracks (when song is supposed to be full track)
+      if (!this.isLoadingTrack && !this.isFallingBack && dur > 0 && dur <= 35 && currentTrack && (currentTrack.duration > 45 || !currentTrack.duration || currentTrack.filePath.startsWith('yandex:'))) {
+        console.warn(`[AudioService] Detected 29-30s preview (${dur.toFixed(1)}s vs expected ${currentTrack.duration}s). Automatically replacing with full track...`);
+        this.handlePreviewFallback(currentTrack);
+      }
+    });
+
+    this.audio.addEventListener('error', async () => {
       console.warn('Audio element error:', this.audio.error);
+      // If error happened with crossOrigin, retry without crossOrigin first
+      if (this.audio.crossOrigin) {
+        console.warn('[AudioService] Retrying audio load without crossOrigin...');
+        this.audio.crossOrigin = null;
+        const currentSrc = this.audio.src;
+        if (currentSrc && currentSrc !== window.location.href) {
+          this.audio.src = currentSrc;
+          this.audio.load();
+          this.audio.play().catch(() => {});
+          return;
+        }
+      }
+
+      const state = usePlayerStore.getState();
+      const currentTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+      if (currentTrack && !this.isLoadingTrack && !this.isFallingBack) {
+        console.warn('[AudioService] Playback error encountered, falling back to full audio stream for:', currentTrack.title);
+        await this.handlePreviewFallback(currentTrack);
+      }
     });
     
-    this.audio.addEventListener('ended', () => {
+    this.audio.addEventListener('ended', async () => {
       // Защита от ложных срабатываний ended при сбросе src или во время переключения
       if (this.isLoadingTrack) return;
       if (!this.audio.src || this.audio.src === window.location.href) return;
@@ -159,6 +191,16 @@ export class AudioService {
 
       const state = usePlayerStore.getState();
       const currentTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+
+      // PREVENT PREMATURE SKIP ON 29-30 SECOND PREVIEWS!
+      if (this.audio.duration > 0 && this.audio.duration <= 35 && currentTrack && (currentTrack.duration > 45 || !currentTrack.duration)) {
+        console.warn('[AudioService] Track ended at preview length (<35s). Attempting full stream fallback instead of skipping...');
+        const recovered = await this.handlePreviewFallback(currentTrack);
+        if (recovered) {
+          return;
+        }
+      }
+
       if (currentTrack) {
         waveAnalyticsService.logTrackEvent({
           track: currentTrack,
@@ -711,6 +753,65 @@ export class AudioService {
       }
     } catch (error) {
       console.error("Ошибка при установке кастомной обложки:", error);
+    }
+  }
+
+  private async handlePreviewFallback(currentTrack: Track): Promise<boolean> {
+    if (this.isFallingBack) return false;
+    this.isFallingBack = true;
+    try {
+      console.warn(`[AudioService] Handling full audio fallback for: ${currentTrack.artist} - ${currentTrack.title}`);
+      const query = `${currentTrack.artist} - ${currentTrack.title}`;
+      const cleanTrackId = (currentTrack.id || `${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const fallbackUrl = await invoke<string>('get_full_audio_stream', { query, trackId: cleanTrackId });
+      
+      const state = usePlayerStore.getState();
+      const activeTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+      if (!activeTrack || activeTrack.id !== currentTrack.id) {
+        this.isFallingBack = false;
+        return false;
+      }
+
+      const wasPlaying = state.isPlaying;
+      const curTime = (this.audio.currentTime > 0 && this.audio.currentTime < 32) ? this.audio.currentTime : 0;
+
+      if (fallbackUrl.startsWith('local:')) {
+        const actualPath = fallbackUrl.substring(6);
+        if (isMobile) {
+          try {
+            const fileData = await readFile(actualPath);
+            const blob = new Blob([fileData], { type: 'audio/mpeg' });
+            this.audio.src = URL.createObjectURL(blob);
+          } catch {
+            this.audio.src = convertFileSrc(actualPath);
+          }
+        } else {
+          this.audio.src = convertFileSrc(actualPath);
+        }
+      } else {
+        this.audio.src = fallbackUrl;
+      }
+
+      if (curTime > 0) {
+        const restoreTime = () => {
+          try {
+            this.audio.currentTime = curTime;
+          } catch {}
+          this.audio.removeEventListener('loadedmetadata', restoreTime);
+        };
+        this.audio.addEventListener('loadedmetadata', restoreTime);
+      }
+
+      if (wasPlaying) {
+        this.resumeAudioContext();
+        this.audio.play().catch(() => {});
+      }
+      this.isFallingBack = false;
+      return true;
+    } catch (e) {
+      console.warn('[AudioService] Fallback to full stream failed:', e);
+      this.isFallingBack = false;
+      return false;
     }
   }
 

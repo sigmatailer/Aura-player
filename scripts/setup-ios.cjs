@@ -53,3 +53,47 @@ for (const file of plists) {
     console.log('Successfully injected UIBackgroundModes into', file);
   }
 }
+
+// Update iOS AppIcon in Assets.xcassets
+const iconSets = [];
+function findDirs(dir, filter) {
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (filter.test(entry.name)) {
+        iconSets.push(full);
+      } else {
+        findDirs(full, filter);
+      }
+    }
+  }
+}
+
+findDirs('src-tauri/gen/apple', /AppIcon\.appiconset$/);
+for (const iconSetDir of iconSets) {
+  console.log('Updating iOS AppIcon in:', iconSetDir);
+  const iosIconsDir = path.join('src-tauri', 'icons', 'ios');
+  if (fs.existsSync(iosIconsDir)) {
+    const iconFiles = fs.readdirSync(iosIconsDir);
+    for (const f of iconFiles) {
+      if (f.endsWith('.png')) {
+        fs.copyFileSync(path.join(iosIconsDir, f), path.join(iconSetDir, f));
+      }
+    }
+  }
+  const masterIcon = fs.existsSync('app-icon.png') ? 'app-icon.png' : path.join('src-tauri', 'icons', 'ios', 'AppIcon-512@2x.png');
+  if (fs.existsSync(masterIcon)) {
+    fs.copyFileSync(masterIcon, path.join(iconSetDir, 'AppIcon-512@2x.png'));
+    fs.copyFileSync(masterIcon, path.join(iconSetDir, 'icon-512@2x.png'));
+    const existingFiles = fs.readdirSync(iconSetDir);
+    for (const f of existingFiles) {
+      if (f.endsWith('.png') && f.startsWith('icon-')) {
+        fs.copyFileSync(masterIcon, path.join(iconSetDir, f));
+      }
+    }
+  }
+  console.log('Successfully updated AppIcon.appiconset in', iconSetDir);
+}
+

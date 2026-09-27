@@ -60,6 +60,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Configure Android App Icons
+        run: |
+          npx @tauri-apps/cli icon app-icon.png --ios-color "#000000" || true
+          cp -r src-tauri/icons/android/mipmap-* src-tauri/gen/android/app/src/main/res/ || true
+          cp src-tauri/icons/android/values/ic_launcher_background.xml src-tauri/gen/android/app/src/main/res/values/ || true
+
       - name: Build Android APK
         run: |
           sed -i '/org.gradle.java.home/d' src-tauri/gen/android/gradle.properties || true

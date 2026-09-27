@@ -699,25 +699,70 @@ async fn get_yandex_stream(track_id: String, token: String) -> Result<String, St
     // 4. Construct final MP3 URL
     let final_url = format!("https://{}/get-mp3/{}/{}{}", host, hash, ts, path);
     
-    // 5. Verify if track is full or preview (< 1.2 MB is a 25-30s snippet)
-    let is_preview = if let Ok(resp) = client.head(&final_url).send().await {
-        if let Some(cl) = resp.headers().get("content-length")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok()) 
-        {
-            cl < 1_200_000
-        } else {
-            false
-        }
-    } else {
-        false
-    };
+    // 5. Verify if track is full or preview (< 1.5 MB is a 25-30s snippet)
+    // NOTE: Yandex storage servers return 405 Method Not Allowed for HEAD requests.
+    // We use a fast Range request (bytes=0-1024) on GET to read Content-Range or Content-Length.
+    let check_resp = client.get(&final_url)
+        .header("Range", "bytes=0-1024")
+        .send().await;
 
-    if is_preview {
-        return Err("preview_only".to_string());
+    match check_resp {
+        Ok(resp) => {
+            if !resp.status().is_success() && resp.status().as_u16() != 206 {
+                return Err(format!("Yandex stream HTTP status: {}", resp.status()));
+            }
+            let total_size: Option<u64> = if let Some(cr) = resp.headers().get("content-range").and_then(|v| v.to_str().ok()) {
+                cr.rsplit('/').next().and_then(|s| s.parse::<u64>().ok())
+            } else if let Some(cl) = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<u64>().ok()) {
+                Some(cl)
+            } else {
+                None
+            };
+
+            if let Some(sz) = total_size {
+                if sz < 1_500_000 {
+                    return Err("preview_only".to_string());
+                }
+            }
+        },
+        Err(e) => {
+            return Err(format!("Yandex stream check error: {}", e));
+        }
     }
 
     Ok(final_url)
+}
+
+fn clean_music_query(raw: &str) -> Vec<String> {
+    let mut queries = Vec::new();
+    let trimmed = raw.trim();
+    if !trimmed.is_empty() {
+        queries.push(trimmed.to_string());
+    }
+
+    // Strip brackets: (feat. ...), [Official Video], etc.
+    let mut cleaned = String::new();
+    let mut depth_paren = 0;
+    let mut depth_bracket = 0;
+    for c in trimmed.chars() {
+        match c {
+            '(' => depth_paren += 1,
+            ')' => if depth_paren > 0 { depth_paren -= 1 },
+            '[' => depth_bracket += 1,
+            ']' => if depth_bracket > 0 { depth_bracket -= 1 },
+            _ => {
+                if depth_paren == 0 && depth_bracket == 0 {
+                    cleaned.push(c);
+                }
+            }
+        }
+    }
+    let cleaned_str = cleaned.replace(" - ", " ").trim().to_string();
+    if !cleaned_str.is_empty() && cleaned_str != trimmed {
+        queries.push(cleaned_str);
+    }
+
+    queries
 }
 
 #[tauri::command]
@@ -728,40 +773,74 @@ async fn get_full_audio_stream(query: String, _track_id: String) -> Result<Strin
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Attempt 1: mp3party.net (fast direct full mp3)
-    let search_url = format!("https://mp3party.net/search?q={}", urlencoding::encode(&query));
-    if let Ok(resp) = client.get(&search_url).send().await {
-        if let Ok(html) = resp.text().await {
-            let mut direct_url = String::new();
-            for part in html.split("\"") {
-                if part.starts_with("https://dl") && part.ends_with(".mp3") {
-                    direct_url = part.to_string();
-                    break;
-                }
-            }
-            if !direct_url.is_empty() {
-                return Ok(direct_url);
-            }
-        }
-    }
+    let query_variants = clean_music_query(&query);
 
-    // Attempt 2: SoundCloud
-    if let Ok(sc_json) = search_soundcloud(query.clone()).await {
-        if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&sc_json) {
-            if let Some(first) = items.first() {
-                if let (Some(sc_id), Some(sc_client)) = (
-                    first.get("videoId").and_then(|v| v.as_str()),
-                    first.get("clientId").and_then(|v| v.as_str())
-                ) {
-                    if let Ok(stream_url) = get_soundcloud_stream(sc_id.to_string(), sc_client.to_string()).await {
-                        return Ok(stream_url);
+    // Attempt 1: mp3party.net (fast direct full mp3)
+    for q in &query_variants {
+        let search_url = format!("https://mp3party.net/search?q={}", urlencoding::encode(q));
+        if let Ok(resp) = client.get(&search_url).send().await {
+            if let Ok(html) = resp.text().await {
+                for part in html.split("\"") {
+                    if part.starts_with("https://dl") && part.ends_with(".mp3") {
+                        if let Ok(check) = client.get(part).header("Range", "bytes=0-1024").send().await {
+                            if check.status().is_success() || check.status().as_u16() == 206 {
+                                return Ok(part.to_string());
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // Attempt 3: YouTube fallback
+    // Attempt 2: Invidious / Piped mirrors (proxied audio streams)
+    for q in &query_variants {
+        if let Ok((instance, json_str)) = search_invidious(q.clone()).await {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                let data = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(data) {
+                    if let Some(first) = items.first() {
+                        if let Some(video_id) = first.get("videoId").and_then(|v| v.as_str()) {
+                            if let Ok(info_str) = get_invidious_stream(instance.clone(), video_id.to_string()).await {
+                                if let Ok(info_json) = serde_json::from_str::<serde_json::Value>(&info_str) {
+                                    if let Some(formats) = info_json.get("adaptiveFormats").and_then(|f| f.as_array()) {
+                                        for f in formats {
+                                            let mime = f.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                            if mime.contains("audio/mp4") || mime.contains("audio/webm") || mime.contains("audio/") {
+                                                if let Some(audio_url) = f.get("url").and_then(|u| u.as_str()) {
+                                                    return Ok(audio_url.to_string());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Attempt 3: SoundCloud
+    for q in &query_variants {
+        if let Ok(sc_json) = search_soundcloud(q.clone()).await {
+            if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&sc_json) {
+                if let Some(first) = items.first() {
+                    if let (Some(sc_id), Some(sc_client)) = (
+                        first.get("videoId").and_then(|v| v.as_str()),
+                        first.get("clientId").and_then(|v| v.as_str())
+                    ) {
+                        if let Ok(stream_url) = get_soundcloud_stream(sc_id.to_string(), sc_client.to_string()).await {
+                            return Ok(stream_url);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Attempt 4: YouTube fallback
     if let Ok(yt_stream_url) = get_youtube_stream(query).await {
         return Ok(yt_stream_url);
     }
