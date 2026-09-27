@@ -486,6 +486,9 @@ export const useThemeStore = create<ThemeStore>()(
         // Slot 0: Wallpaper
         if (slotIndex === 0) {
           updates.customWallpaper = item ? item.url : null;
+          if (item) {
+            updates.transparencyEnabled = true;
+          }
         }
         // Slot 1: Custom Player Cover
         if (slotIndex === 1) {

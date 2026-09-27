@@ -221,7 +221,7 @@ function App() {
             <div 
               className="absolute inset-0 bg-cover bg-center transition-all duration-500 ease-out"
               style={{
-                backgroundImage: `url(${customWallpaper})`,
+                backgroundImage: `url("${customWallpaper}")`,
                 filter: glassBlur > 0 ? `blur(${glassBlur}px)` : 'none',
                 transform: glassBlur > 0 ? 'scale(1.06)' : 'scale(1.0)',
                 opacity: Math.max(0.05, Math.min(1, wallpaperOpacity / 100)),

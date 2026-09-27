@@ -2,7 +2,10 @@ import React, { useEffect } from 'react';
 import { useThemeStore, getContrastColor } from '../store/useThemeStore';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { getActiveTheme, currentThemeId, fontId, trackFontId, getActiveFont, getActiveTrackFont } = useThemeStore();
+  const { 
+    getActiveTheme, currentThemeId, fontId, trackFontId, 
+    getActiveFont, getActiveTrackFont, fontSize, fontWeight 
+  } = useThemeStore();
 
   useEffect(() => {
     const theme = getActiveTheme();
@@ -25,7 +28,27 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.style.setProperty('--font-family', font.family);
     root.style.setProperty('--font-track', trackFont.family === 'inherit' ? font.family : trackFont.family);
     document.body.style.fontFamily = font.family;
-  }, [currentThemeId, fontId, trackFontId, getActiveTheme, getActiveFont, getActiveTrackFont]);
+
+    // Apply font size globally to root HTML (scales rem units and pixel utility classes throughout entire app)
+    const currentSize = fontSize || 16;
+    const fontScale = currentSize / 16;
+    root.style.setProperty('--font-scale', `${fontScale}`);
+    root.style.fontSize = `${currentSize}px`;
+    root.style.setProperty('--font-size-base', `${currentSize}px`);
+    root.setAttribute('data-font-size-scaled', 'true');
+
+    // Apply font weight globally
+    const currentWeight = fontWeight || 'Auto';
+    if (currentWeight !== 'Auto') {
+      root.setAttribute('data-font-weight', currentWeight);
+      root.style.setProperty('--font-weight-base', currentWeight);
+      document.body.style.fontWeight = currentWeight;
+    } else {
+      root.removeAttribute('data-font-weight');
+      root.style.setProperty('--font-weight-base', 'normal');
+      document.body.style.fontWeight = '';
+    }
+  }, [currentThemeId, fontId, trackFontId, getActiveTheme, getActiveFont, getActiveTrackFont, fontSize, fontWeight]);
 
   return <>{children}</>;
 };

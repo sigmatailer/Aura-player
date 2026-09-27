@@ -88,10 +88,10 @@ export const HistoryDrawer: React.FC = () => {
                 ? `0 25px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,${(glassStrength / 100) * 0.20})`
                 : '0 25px 60px rgba(0,0,0,0.7)'
             }}
-            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-[370px] border-l shadow-2xl flex flex-col select-none overflow-hidden"
+            className="fixed right-0 top-0 bottom-0 z-50 w-full sm:max-w-[370px] border-l shadow-2xl flex flex-col select-none overflow-hidden"
           >
             {/* Header */}
-            <div className="p-4 pb-3 flex items-center justify-between border-b border-white/[0.06] shrink-0">
+            <div className="p-4 pb-3 pt-16 sm:pt-4 flex items-center justify-between border-b border-white/[0.06] shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
                   <Clock size={16} />
