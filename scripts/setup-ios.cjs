@@ -21,17 +21,27 @@ for (const file of appDelegates) {
   if (!content.includes('AVFoundation')) {
     content = 'import AVFoundation\n' + content;
   }
-  if (!content.includes('setCategory')) {
-    const sessionCode = `
+  const sessionCode = `
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
             try session.setActive(true)
+            NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { notification in
+                guard let userInfo = notification.userInfo,
+                      let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+                if type == .ended {
+                    try? AVAudioSession.sharedInstance().setActive(true)
+                }
+            }
         } catch {
             print("Failed to set AVAudioSession category: \\(error)")
         }
 `;
-    content = content.replace(/func application\([^{]+\{/, (match) => match + sessionCode);
+  if (content.includes('setCategory')) {
+    content = content.replace(/try\s+session\.setCategory\([^)]+\)/g, 'try session.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])');
+  } else {
+    content = content.replace(/func application[\s\S]*?\{/, (match) => match + sessionCode);
   }
   fs.writeFileSync(file, content, 'utf8');
   console.log('Successfully injected AVAudioSession into', file);
@@ -40,6 +50,7 @@ for (const file of appDelegates) {
 const plists = findFiles('src-tauri/gen/apple', /Info\.plist$/);
 for (const file of plists) {
   let content = fs.readFileSync(file, 'utf8');
+  let modified = false;
   if (!content.includes('UIBackgroundModes')) {
     const bgModes = `
 	<key>UIBackgroundModes</key>
@@ -49,8 +60,24 @@ for (const file of plists) {
 </dict>
 </plist>`;
     content = content.replace(/<\/dict>\s*<\/plist>/, bgModes);
-    fs.writeFileSync(file, content, 'utf8');
+    modified = true;
     console.log('Successfully injected UIBackgroundModes into', file);
+  }
+  if (!content.includes('NSAppTransportSecurity')) {
+    const ats = `
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>`;
+    content = content.replace(/<\/dict>\s*<\/plist>/, ats);
+    modified = true;
+    console.log('Successfully injected NSAppTransportSecurity into', file);
+  }
+  if (modified) {
+    fs.writeFileSync(file, content, 'utf8');
   }
 }
 

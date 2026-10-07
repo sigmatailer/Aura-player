@@ -61,6 +61,7 @@ export interface PlayerState {
   addTracks: (tracks: Track[]) => void;
   removeTrack: (trackId: string) => void;
   playTrack: (index: number) => void;
+  setIsPlaying: (isPlaying: boolean) => void;
   togglePlayPause: () => void;
   nextTrack: (isNaturalEnd?: boolean) => void;
   prevTrack: () => void;

@@ -188,6 +188,8 @@ export const usePlayerStore = create<PlayerState>()(
         };
       }),
 
+      setIsPlaying: (isPlaying: boolean) => set({ isPlaying }),
+
       togglePlayPause: () => set((state) => ({ 
         isPlaying: !state.isPlaying 
       })),

@@ -10,7 +10,11 @@ import { fetchMoreWaveTracks } from './WaveRecommendationService';
 import { waveAnalyticsService } from './WaveAnalyticsService';
 import { pocketBaseService } from './PocketBaseService';
 
-export const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+export const isIOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+  /iPhone|iPad|iPod/i.test(navigator.platform || '')
+);
 export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 export const isMobile = isIOS || isAndroid || (typeof navigator !== 'undefined' && /Mobi|Tablet|iPad|iPhone|Android/i.test(navigator.userAgent));
 
@@ -30,8 +34,17 @@ export class AudioService {
 
   constructor() {
     this.audio = new Audio();
+    this.audio.setAttribute('playsinline', 'true');
+    this.audio.setAttribute('webkit-playsinline', 'true');
+    (this.audio as any).playsInline = true;
     this.audio.removeAttribute('crossorigin');
     this.audio.crossOrigin = null;
+
+    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+      try {
+        (navigator as any).audioSession.type = 'playback';
+      } catch (e) {}
+    }
 
     // Mobile user-gesture unlock for AudioContext
     if (typeof window !== 'undefined') {
@@ -106,10 +119,10 @@ export class AudioService {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
       try {
         navigator.mediaSession.setActionHandler('play', () => {
-          usePlayerStore.getState().togglePlayPause();
+          usePlayerStore.getState().setIsPlaying(true);
         });
         navigator.mediaSession.setActionHandler('pause', () => {
-          usePlayerStore.getState().togglePlayPause();
+          usePlayerStore.getState().setIsPlaying(false);
         });
         navigator.mediaSession.setActionHandler('previoustrack', () => {
           usePlayerStore.getState().prevTrack();
@@ -387,6 +400,11 @@ export class AudioService {
   }
 
   public initEqualizer() {
+    // CRITICAL iOS FIX: On iOS WebKit, routing an HTMLAudioElement through AudioContext
+    // (createMediaElementSource) causes the entire audio pipeline to freeze when the screen locks or app backgrounds,
+    // because iOS suspends Web Audio rendering threads. We use the direct native media pipeline on iOS.
+    if (isIOS) return;
+
     if (this.audioCtx) {
       this.resumeAudioContext();
       return;
@@ -479,6 +497,7 @@ export class AudioService {
   }
 
   public setEqBand(index: number, gainDb: number) {
+    if (isIOS) return;
     if (!this.audioCtx) {
       this.initEqualizer();
     }
@@ -489,6 +508,7 @@ export class AudioService {
   }
 
   public setPreAmp(gainDb: number) {
+    if (isIOS) return;
     if (!this.audioCtx) {
       this.initEqualizer();
     }
@@ -798,7 +818,7 @@ export class AudioService {
 
       if (fallbackUrl.startsWith('local:')) {
         const actualPath = fallbackUrl.substring(6);
-        if (isMobile) {
+        if (!isIOS && isMobile) {
           try {
             const fileData = await readFile(actualPath);
             const blob = new Blob([fileData], { type: 'audio/mpeg' });
@@ -841,11 +861,13 @@ export class AudioService {
     const loadId = ++this.currentLoadId;
     this.isLoadingTrack = true;
 
-    // Stop, clear and unload old audio immediately so it cannot bleed through
+    // Stop old audio without destroying the native media session pipeline on iOS!
     this.audio.pause();
     this.audio.currentTime = 0;
-    this.audio.removeAttribute('src');
-    this.audio.load();
+    if (!isIOS) {
+      this.audio.removeAttribute('src');
+      this.audio.load();
+    }
 
     let isYandex = track.filePath.startsWith('yandex:');
     let trackId = '';
@@ -877,7 +899,7 @@ export class AudioService {
       if (loadId !== this.currentLoadId) return;
       this.audio.removeAttribute('crossorigin');
       this.audio.crossOrigin = null;
-      if (isMobile) {
+      if (!isIOS && isMobile) {
         try {
           const fileData = await readFile(cachedLocalPath);
           const blob = new Blob([fileData], { type: 'audio/mpeg' });
@@ -925,7 +947,7 @@ export class AudioService {
         this.audio.crossOrigin = null;
         if (audioUrl.startsWith('local:')) {
           const actualPath = audioUrl.substring(6);
-          if (isMobile) {
+          if (!isIOS && isMobile) {
             try {
               const fileData = await readFile(actualPath);
               const blob = new Blob([fileData], { type: 'audio/mpeg' });
@@ -958,7 +980,7 @@ export class AudioService {
       if (loadId !== this.currentLoadId) return;
       this.audio.removeAttribute('crossorigin');
       this.audio.crossOrigin = null;
-      if (isMobile && track.filePath.startsWith('http')) {
+      if (!isIOS && isMobile && track.filePath.startsWith('http')) {
         try {
           const bytes = await invoke<number[]>('download_audio_temp', { url: track.filePath });
           const blob = new Blob([new Uint8Array(bytes)], { type: 'audio/mpeg' });
@@ -973,7 +995,7 @@ export class AudioService {
       if (loadId !== this.currentLoadId) return;
       this.audio.removeAttribute('crossorigin');
       this.audio.crossOrigin = null;
-      if (isMobile) {
+      if (!isIOS && isMobile) {
         try {
           const fileData = await readFile(track.filePath);
           const blob = new Blob([fileData], { type: 'audio/mpeg' });
