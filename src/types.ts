@@ -26,8 +26,13 @@ export interface PlayerState {
   isFullscreen: boolean;
   isMiniPlayer: boolean;
   miniPlayerStyle: 'square' | 'rectangle' | 'island';
-  isWaveActive: boolean;
+  isWaveActive?: boolean;
   setIsWaveActive: (active: boolean) => void;
+  
+  // Shuffle Queue Tracking
+  playedShuffleTrackIds: string[];
+  shuffleHistory: number[];
+  shuffleHistoryIndex: number;
   
   // History
   history: Track[];
@@ -41,10 +46,17 @@ export interface PlayerState {
   eqBands: number[]; // e.g. [0, 0, 0, 0, 0, 0] for 6 bands
   eqPreAmp: number;
   
+  // Context
+  playbackContext?: {
+    title: string;
+    type: 'wave' | 'playlist' | 'collection' | 'artist';
+    coverUrl?: string;
+  };
+  
   // Действия
   setQueue: (tracks: Track[]) => void;
   clearQueue: () => void;
-  playContext: (tracks: Track[], index: number, isWave?: boolean) => void;
+  playContext: (tracks: Track[], index: number, contextInfo?: { title?: string; type?: 'wave' | 'playlist' | 'collection' | 'artist'; coverUrl?: string } | boolean) => void;
   addTrack: (track: Track) => void;
   addTracks: (tracks: Track[]) => void;
   removeTrack: (trackId: string) => void;

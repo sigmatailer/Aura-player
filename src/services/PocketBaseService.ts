@@ -1,7 +1,7 @@
 import PocketBase from 'pocketbase';
-import { readFile } from '@tauri-apps/plugin-fs';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { useAuthStore, CloudUser } from '../store/useAuthStore';
+import { useFriendsStore } from '../store/useFriendsStore';
+import { useThemeStore } from '../store/useThemeStore';
 import { useCollectionStore, Playlist, setCollectionSyncListener } from '../store/useCollectionStore';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { Track } from '../types';
@@ -19,33 +19,11 @@ async function makePortableCover(url?: string): Promise<string> {
   }
 
   try {
-    let blob: Blob | null = null;
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
-      const res = await fetch(url);
-      blob = await res.blob();
-    } else {
-      // Local file path (e.g. C:\... or /storage/... or file:// or asset://)
-      try {
-        const cleanPath = url.replace(/^file:\/\//, '');
-        const data = await readFile(cleanPath);
-        const ext = cleanPath.split('.').pop()?.toLowerCase() || 'jpg';
-        const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-        blob = new Blob([data], { type: mime });
-      } catch {
-        try {
-          const res = await fetch(convertFileSrc(url));
-          blob = await res.blob();
-        } catch {
-          blob = null;
-        }
-      }
-    }
-
-    if (!blob) return url;
-
+    const res = await fetch(url);
+    const blob = await res.blob();
     return new Promise<string>((resolve) => {
       const img = new Image();
-      const objUrl = URL.createObjectURL(blob!);
+      const objUrl = URL.createObjectURL(blob);
       img.onload = () => {
         const maxDim = 800;
         let width = img.width;
@@ -104,6 +82,7 @@ class PocketBaseService {
   private unsubscribeUser: (() => void) | null = null;
   private unsubscribeHistory: (() => void) | null = null;
   private unsubscribeForYou: (() => void) | null = null;
+  private unsubscribeFriendRequests: (() => void) | null = null;
   private isSyncingFavorites: boolean = false;
   private isSyncingPlaylists: boolean = false;
   private isSyncingHistory: boolean = false;
@@ -112,6 +91,82 @@ class PocketBaseService {
   private historyDebounceTimer: any = null;
   private forYouDebounceTimer: any = null;
   private deviceListeners = new Set<() => void>();
+
+  private profileUpdateSeq: number = 0;
+  private cloudCustomizationCache = new Map<string, { data: Record<string, any>; timestamp: number }>();
+
+  public getLocalCustomization(userId?: string): { nicknameFont?: any; nicknameEffect?: any; profileColor?: string } {
+    try {
+      const key = userId ? `aura_user_custom_${userId}` : 'aura_user_custom_current';
+      const item = localStorage.getItem(key) || localStorage.getItem('aura_user_custom_current');
+      return item ? JSON.parse(item) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  public saveLocalCustomization(userId: string | undefined, data: { nicknameFont?: any; nicknameEffect?: any; profileColor?: string }) {
+    try {
+      const existing = this.getLocalCustomization(userId);
+      const updated = { ...existing, ...data };
+      if (userId) {
+        localStorage.setItem(`aura_user_custom_${userId}`, JSON.stringify(updated));
+      }
+      localStorage.setItem('aura_user_custom_current', JSON.stringify(updated));
+    } catch {}
+  }
+
+  public async saveCloudCustomization(userId: string, data: Record<string, any>) {
+    if (!userId || !this.isLoggedIn()) return;
+    try {
+      const existing = await this.pb.collection('playlists').getList(1, 1, {
+        filter: `user = "${userId}" && name = "__aura_user_profile__"`
+      });
+      let currentData: Record<string, any> = {};
+      if (existing.items.length > 0 && existing.items[0].tracks_json) {
+        const tj = existing.items[0].tracks_json;
+        currentData = (typeof tj === 'object' && !Array.isArray(tj)) ? tj : (Array.isArray(tj) && tj.length > 0 && typeof tj[0] === 'object' ? tj[0] : {});
+      }
+      const mergedData = { ...currentData, ...data };
+      if (existing.items.length > 0) {
+        await this.pb.collection('playlists').update(existing.items[0].id, {
+          tracks_json: mergedData
+        });
+      } else {
+        await this.pb.collection('playlists').create({
+          user: userId,
+          name: '__aura_user_profile__',
+          tracks_json: mergedData,
+          cover_url: ''
+        });
+      }
+      this.cloudCustomizationCache.set(userId, { data: mergedData, timestamp: Date.now() });
+    } catch (err) {
+      console.warn('saveCloudCustomization error:', err);
+    }
+  }
+
+  public async getCloudCustomization(userId: string): Promise<Record<string, any> | null> {
+    if (!userId) return null;
+    const cached = this.cloudCustomizationCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < 30000) {
+      return cached.data;
+    }
+    try {
+      const res = await this.pb.collection('playlists').getList(1, 1, {
+        filter: `user = "${userId}" && name = "__aura_user_profile__"`
+      });
+      if (res.items.length > 0) {
+        const tj = res.items[0].tracks_json;
+        const data = (typeof tj === 'object' && !Array.isArray(tj)) ? tj : (Array.isArray(tj) && tj.length > 0 && typeof tj[0] === 'object' ? tj[0] : {});
+        this.cloudCustomizationCache.set(userId, { data, timestamp: Date.now() });
+        return data;
+      }
+    } catch (err) {
+      console.warn('getCloudCustomization error:', err);
+    }
+    return null;
+  }
 
   public formatUserRecord(record: any): CloudUser {
     const parseMedia = (val?: string) => {
@@ -126,6 +181,8 @@ class PocketBaseService {
       }
     };
 
+    const localCustom = this.getLocalCustomization(record.id);
+
     return {
       id: record.id,
       email: record.email,
@@ -133,8 +190,24 @@ class PocketBaseService {
       username: record.username || record.name,
       avatar: parseMedia(record.avatar),
       banner: parseMedia(record.banner),
+      bgUrl: parseMedia(record.bg_url || record.bgUrl),
       status: record.status || undefined,
-      bio: record.bio || undefined
+      bio: record.bio || undefined,
+      profileColor: record.profile_color || record.profileColor || localCustom.profileColor || undefined,
+      nicknameFont: (record.nickname_font || record.nicknameFont || localCustom.nicknameFont) || undefined,
+      nicknameEffect: (record.nickname_effect || record.nicknameEffect || localCustom.nicknameEffect) || undefined,
+      discord: record.discord || undefined,
+      telegram: record.telegram || undefined,
+      website: record.website || undefined,
+      pinnedTrackId: record.pinned_track_id || record.pinnedTrackId || undefined,
+      pinnedTrackTitle: record.pinned_track_title || record.pinnedTrackTitle || undefined,
+      pinnedTrackArtist: record.pinned_track_artist || record.pinnedTrackArtist || undefined,
+      pinnedTrackCover: record.pinned_track_cover || record.pinnedTrackCover || undefined,
+      created: record.created,
+      updated: record.updated,
+      accountNumber: record.account_number || record.accountNumber || undefined,
+      friendsCount: record.friends_count || record.friendsCount || undefined,
+      subscribersCount: record.subscribers_count || record.subscribersCount || undefined
     };
   }
 
@@ -142,6 +215,15 @@ class PocketBaseService {
     const url = useAuthStore.getState().serverUrl || 'http://31.77.15.175:8090';
     this.pb = new PocketBase(url);
     this.pb.autoCancellation(false);
+
+    // Keep PocketBase authStore synchronized with localStorage and authStore
+    this.pb.authStore.onChange((token, record) => {
+      if (token && record) {
+        localStorage.setItem('aura_pb_token', token);
+        localStorage.setItem('aura_pb_user', JSON.stringify(record));
+        useAuthStore.getState().setToken(token);
+      }
+    });
 
     // Ensure PocketBase authStore is in sync with localStorage tokens
     const savedToken = localStorage.getItem('aura_pb_token');
@@ -155,32 +237,88 @@ class PocketBaseService {
       }
     }
 
-    if (this.pb.authStore.isValid && this.pb.authStore.record) {
-      const record = this.pb.authStore.record;
-      const formatted = this.formatUserRecord(record);
-      const currentUser = useAuthStore.getState().user;
-      useAuthStore.getState().setUser({
-        ...formatted,
-        avatar: formatted.avatar || currentUser?.avatar,
-        banner: formatted.banner || currentUser?.banner,
-        status: formatted.status || currentUser?.status,
-        bio: formatted.bio || currentUser?.bio
-      });
-      useAuthStore.getState().setToken(this.pb.authStore.token);
+    const activeUid = this.getUserId();
+    if (activeUid) {
+      const record = this.pb.authStore.record || useAuthStore.getState().user;
+      if (record) {
+        const formatted = this.formatUserRecord(record);
+        const currentUser = useAuthStore.getState().user;
+        const localCustom = this.getLocalCustomization(activeUid);
+        useAuthStore.getState().setUser({
+          ...formatted,
+          nicknameFont: formatted.nicknameFont || currentUser?.nicknameFont || localCustom.nicknameFont,
+          nicknameEffect: formatted.nicknameEffect || currentUser?.nicknameEffect || localCustom.nicknameEffect,
+          profileColor: formatted.profileColor || currentUser?.profileColor || localCustom.profileColor,
+          avatar: formatted.avatar || currentUser?.avatar,
+          banner: formatted.banner || currentUser?.banner,
+          bgUrl: formatted.bgUrl || currentUser?.bgUrl,
+          status: formatted.status || currentUser?.status,
+          bio: formatted.bio || currentUser?.bio
+        });
+      }
+      this.getCloudCustomization(activeUid).then(cloud => {
+        if (cloud) {
+          useAuthStore.getState().updateUser({
+            ...(cloud.nicknameFont ? { nicknameFont: cloud.nicknameFont } : {}),
+            ...(cloud.nicknameEffect ? { nicknameEffect: cloud.nicknameEffect } : {}),
+            ...(cloud.profileColor ? { profileColor: cloud.profileColor } : {}),
+            ...(cloud.status ? { status: cloud.status } : {}),
+            ...(cloud.bio ? { bio: cloud.bio } : {}),
+            ...(cloud.banner ? { banner: cloud.banner } : {}),
+            ...(cloud.bgUrl ? { bgUrl: cloud.bgUrl } : {})
+          });
+          if (cloud.bgUrl) {
+            useThemeStore.getState().setSlotMedia(0, {
+              id: 'bg-cloud',
+              name: 'Фон',
+              url: cloud.bgUrl,
+              type: 'image'
+            });
+          }
+        }
+      }).catch(() => {});
+      this.refreshTokenIfNeeded().catch(() => {});
       this.subscribeRealtime();
+      this.validateSession().catch(() => {});
       setTimeout(() => {
         this.syncAll().catch(err => console.warn('Startup syncAll error:', err));
+        this.updateDevicePresence(null, 0, false);
       }, 500);
     }
 
-    // Auto-resync when connection is restored
+    // Dynamic presence heartbeat: every 7s
     if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => {
+      setInterval(() => {
         if (this.isLoggedIn()) {
+          const playerState = usePlayerStore.getState();
+          const curTrack = playerState.currentTrackIndex >= 0 ? playerState.queue[playerState.currentTrackIndex] : null;
+          this.updateDevicePresence(curTrack, playerState.progress || 0, playerState.isPlaying, playerState.playbackContext);
+        }
+      }, 7000);
+    }
+
+    // Auto-resync when connection is restored, window focused, or screen wakes on mobile
+    if (typeof window !== 'undefined') {
+      const handleWakeOrFocus = async () => {
+        if (!this.isLoggedIn()) return;
+        try {
+          await this.refreshTokenIfNeeded();
           this.subscribeRealtime();
-          this.syncAll().catch(() => {});
+          await this.syncAll();
+          const ps = usePlayerStore.getState();
+          const curTrack = ps.currentTrackIndex >= 0 ? ps.queue[ps.currentTrackIndex] : null;
+          this.updateDevicePresence(curTrack, ps.progress || 0, ps.isPlaying, ps.playbackContext);
+        } catch {}
+      };
+
+      window.addEventListener('online', handleWakeOrFocus);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          handleWakeOrFocus();
         }
       });
+      window.addEventListener('focus', handleWakeOrFocus);
+      window.addEventListener('pageshow', handleWakeOrFocus);
     }
 
     // Register collection store sync listener
@@ -190,12 +328,80 @@ class PocketBaseService {
       onPlaylistDeleted: (name) => this.onPlaylistDeleted(name)
     });
 
-    // Register player store history sync listener
+    // Immediate presence updates on play/pause or track change
+    let lastPresenceTrackId: string | null = null;
+    let lastPresencePlaying: boolean = false;
+    let presenceDebounce: any = null;
+
     usePlayerStore.subscribe((state, prevState) => {
+      // Sync history
       if (state.history !== prevState.history && !this.isInternalSync && !this.isSyncingHistory && this.isLoggedIn()) {
         this.pushHistory(state.history || []);
       }
+
+      // Sync presence immediately on state change
+      if (!this.isLoggedIn()) return;
+      const curTrack = state.currentTrackIndex >= 0 ? state.queue[state.currentTrackIndex] : null;
+      const curTrackId = curTrack?.id || null;
+      const isPlaying = !!state.isPlaying;
+
+      if (curTrackId !== lastPresenceTrackId || isPlaying !== lastPresencePlaying) {
+        lastPresenceTrackId = curTrackId;
+        lastPresencePlaying = isPlaying;
+        if (presenceDebounce) clearTimeout(presenceDebounce);
+        presenceDebounce = setTimeout(() => {
+          this.updateDevicePresence(curTrack, state.progress || 0, isPlaying, state.playbackContext);
+        }, 300);
+      }
     });
+  }
+
+  public async refreshTokenIfNeeded(): Promise<boolean> {
+    const token = this.pb.authStore.token || localStorage.getItem('aura_pb_token');
+    if (!token) return false;
+    try {
+      await this.pb.collection('users').authRefresh({ requestKey: null });
+      return true;
+    } catch (err: any) {
+      if (err?.status === 401 || err?.status === 404) {
+        console.warn('Session refresh invalid, validating session...');
+        this.validateSession().catch(() => {});
+        return false;
+      }
+      return true;
+    }
+  }
+
+  public async validateSession(): Promise<boolean> {
+    const userId = this.getUserId();
+    if (!userId) return false;
+    try {
+      const userRecord = await this.pb.collection('users').getOne(userId, { requestKey: null });
+      if (!userRecord || !userRecord.id) {
+        throw { status: 404, message: 'User not found in PocketBase users collection' };
+      }
+      return true;
+    } catch (err: any) {
+      if (err?.status === 404) {
+        console.warn('Account does not exist in database, logging out:', err?.message || err);
+        this.logoutLocally();
+        return false;
+      }
+      // Network errors (status 0, offline, timeouts) must NEVER log the user out!
+      return true;
+    }
+  }
+
+  public logoutLocally() {
+    this.pb.authStore.clear();
+    localStorage.removeItem('aura_pb_token');
+    localStorage.removeItem('aura_pb_user');
+    localStorage.removeItem('pocketbase_auth');
+    useAuthStore.getState().logout();
+    useFriendsStore.setState({ friends: [], incomingRequests: [], outgoingRequests: [] });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('aura-auth-changed', { detail: { user: null } }));
+    }
   }
 
   public onDevicesChanged(cb: () => void): () => void {
@@ -211,6 +417,33 @@ class PocketBaseService {
     });
   }
 
+  public getClientDeviceId(): string {
+    if (typeof window === 'undefined') return 'device_main';
+    let id = localStorage.getItem('aura_client_device_id');
+    if (!id) {
+      id = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+      localStorage.setItem('aura_client_device_id', id);
+    }
+    return id;
+  }
+
+  public cleanDeviceName(rawName?: string): string {
+    if (!rawName) return 'Устройство Aura';
+    let name = rawName.split(':::')[0].trim();
+    name = name.replace(/\s*\[id:[^\]]+\]\s*/g, '').trim();
+    return name || 'Устройство Aura';
+  }
+
+  public isCurrentDevice(dev: any): boolean {
+    if (!dev) return false;
+    const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura_my_device_record_id') : null;
+    if (savedId && dev.id === savedId) return true;
+    const myDeviceId = this.getClientDeviceId();
+    if (dev.device_name && dev.device_name.includes(`[id:${myDeviceId}]`)) return true;
+    const myCleanName = this.getDeviceName();
+    return this.cleanDeviceName(dev.device_name) === myCleanName;
+  }
+
   public getDeviceName(): string {
     if (isAndroid) return 'Android Устройство';
     if (isIOS) return 'iPhone / iPad';
@@ -218,22 +451,79 @@ class PocketBaseService {
   }
 
   public isLoggedIn(): boolean {
-    return this.pb.authStore.isValid && !!this.pb.authStore.record?.id;
+    return !!this.getUserId();
   }
 
   public getUserId(): string | null {
-    return this.pb.authStore.record?.id || null;
+    return this.pb.authStore.record?.id || useAuthStore.getState().user?.id || null;
   }
+
+  private userOrderCache: { list: string[]; timestamp: number } | null = null;
+
+  public async getUserOrderNumber(_userCreated?: string, userId?: string): Promise<number> {
+    const uid = userId || this.getUserId();
+    if (!uid) return 1;
+
+    try {
+      const now = Date.now();
+      if (!this.userOrderCache || now - this.userOrderCache.timestamp > 30000) {
+        const records = await this.pb.collection('users').getFullList({
+          sort: '+created',
+          fields: 'id,created'
+        });
+        this.userOrderCache = {
+          list: records.map(r => r.id),
+          timestamp: now
+        };
+      }
+
+      const idx = this.userOrderCache.list.indexOf(uid);
+      if (idx !== -1) {
+        return idx + 1;
+      }
+    } catch (e) {
+      console.warn('getUserOrderNumber failed:', e);
+    }
+
+    return 1;
+  }
+
 
   public async login(identity: string, pass: string) {
     try {
       useAuthStore.getState().setSyncStatus('Авторизация...');
-      const authData = await this.pb.collection('users').authWithPassword(identity.trim(), pass);
+      const cleanIdentity = identity.trim();
+      let resolvedIdentity = cleanIdentity;
+      const lower = cleanIdentity.toLowerCase();
+
+      // Case-insensitive lookup for username or email
+      try {
+        const usersList = await this.pb.collection('users').getFullList({
+          fields: 'id,username,email,name',
+          requestKey: null
+        });
+        const matched = usersList.find(u => 
+          (u.username && u.username.toLowerCase() === lower) ||
+          (u.email && u.email.toLowerCase() === lower) ||
+          (u.name && u.name.toLowerCase() === lower)
+        );
+        if (matched) {
+          resolvedIdentity = matched.username || matched.email || cleanIdentity;
+        }
+      } catch (err) {
+        console.warn('Case-insensitive login lookup fallback:', err);
+      }
+
+      const authData = await this.pb.collection('users').authWithPassword(resolvedIdentity, pass);
       const record = authData.record;
       const formatted = this.formatUserRecord(record);
       const currentUser = useAuthStore.getState().user;
+      const localCustom = this.getLocalCustomization(record.id);
       useAuthStore.getState().setUser({
         ...formatted,
+        nicknameFont: formatted.nicknameFont || currentUser?.nicknameFont || localCustom.nicknameFont,
+        nicknameEffect: formatted.nicknameEffect || currentUser?.nicknameEffect || localCustom.nicknameEffect,
+        profileColor: formatted.profileColor || currentUser?.profileColor || localCustom.profileColor,
         avatar: formatted.avatar || currentUser?.avatar,
         banner: formatted.banner || currentUser?.banner,
         status: formatted.status || currentUser?.status,
@@ -242,8 +532,32 @@ class PocketBaseService {
       useAuthStore.getState().setToken(authData.token);
       useAuthStore.getState().setSyncStatus('Успешно');
 
+      this.getCloudCustomization(record.id).then(cloud => {
+        if (cloud) {
+          useAuthStore.getState().updateUser({
+            ...(cloud.nicknameFont ? { nicknameFont: cloud.nicknameFont } : {}),
+            ...(cloud.nicknameEffect ? { nicknameEffect: cloud.nicknameEffect } : {}),
+            ...(cloud.profileColor ? { profileColor: cloud.profileColor } : {}),
+            ...(cloud.status ? { status: cloud.status } : {}),
+            ...(cloud.bio ? { bio: cloud.bio } : {}),
+            ...(cloud.banner ? { banner: cloud.banner } : {}),
+            ...(cloud.bgUrl ? { bgUrl: cloud.bgUrl } : {})
+          });
+          if (cloud.bgUrl) {
+            useThemeStore.getState().setSlotMedia(0, {
+              id: 'bg-cloud',
+              name: 'Фон',
+              url: cloud.bgUrl,
+              type: 'image'
+            });
+          }
+        }
+      }).catch(() => {});
+
       this.subscribeRealtime();
       await this.syncAll();
+      this.updateDevicePresence(null, 0, false);
+      this.publishUserCard(formatted);
       return { success: true };
     } catch (err: any) {
       console.error('PocketBase login error:', err);
@@ -268,6 +582,46 @@ class PocketBaseService {
       const cleanName = name.trim();
       const cleanEmail = email.trim();
       const cleanUsername = cleanName.replace(/[^a-zA-Z0-9_]/g, '_');
+      const lowerUsername = cleanUsername.toLowerCase();
+      const lowerName = cleanName.toLowerCase();
+      const lowerEmail = cleanEmail.toLowerCase();
+
+      // Case-insensitive uniqueness check
+      try {
+        const existingUsers = await this.pb.collection('users').getFullList({
+          fields: 'id,username,email,name',
+          requestKey: null
+        });
+
+        const isUsernameTaken = existingUsers.some(u => 
+          (u.username && u.username.toLowerCase() === lowerUsername) ||
+          (u.name && u.name.toLowerCase() === lowerName) ||
+          (u.username && u.username.toLowerCase() === lowerName)
+        );
+
+        if (isUsernameTaken) {
+          useAuthStore.getState().setSyncStatus('Ошибка регистрации');
+          return {
+            success: false,
+            error: `Имя пользователя «${cleanName}» уже занято. Пожалуйста, выберите другое.`
+          };
+        }
+
+        const isEmailTaken = existingUsers.some(u => 
+          u.email && u.email.toLowerCase() === lowerEmail
+        );
+
+        if (isEmailTaken) {
+          useAuthStore.getState().setSyncStatus('Ошибка регистрации');
+          return {
+            success: false,
+            error: `Почта «${cleanEmail}» уже зарегистрирована.`
+          };
+        }
+      } catch (checkErr) {
+        console.warn('Case-insensitive pre-check error:', checkErr);
+      }
+
       await this.pb.collection('users').create({
         email: cleanEmail,
         password: pass,
@@ -304,32 +658,78 @@ class PocketBaseService {
     username?: string;
     avatar?: string;
     banner?: string;
+    bgUrl?: string;
     status?: string;
     bio?: string;
+    profileColor?: string;
+    nicknameFont?: 'default' | 'caveat' | 'spray' | 'beastly' | 'pixel' | 'retro';
+    nicknameEffect?: 'none' | 'animated' | 'neon' | 'cartoon' | 'highlight' | '3d' | 'retro';
+    discord?: string;
+    telegram?: string;
+    website?: string;
+    pinnedTrackId?: string;
+    pinnedTrackTitle?: string;
+    pinnedTrackArtist?: string;
+    pinnedTrackCover?: string;
     avatarBlob?: Blob;
     bannerBlob?: Blob;
   }) {
+    const userId = this.getUserId();
+    const currentSeq = ++this.profileUpdateSeq;
+
+    // Cache customization locally immediately so it's never lost
+    if (fields.nicknameFont !== undefined || fields.nicknameEffect !== undefined || fields.profileColor !== undefined) {
+      this.saveLocalCustomization(userId || undefined, {
+        ...(fields.nicknameFont !== undefined ? { nicknameFont: fields.nicknameFont } : {}),
+        ...(fields.nicknameEffect !== undefined ? { nicknameEffect: fields.nicknameEffect } : {}),
+        ...(fields.profileColor !== undefined ? { profileColor: fields.profileColor } : {})
+      });
+    }
+
     // 1. Immediately update client-side auth store & local storage
     useAuthStore.getState().updateUser({
       name: fields.name,
       avatar: fields.avatar,
       banner: fields.banner,
+      bgUrl: fields.bgUrl,
       status: fields.status,
-      bio: fields.bio
+      bio: fields.bio,
+      profileColor: fields.profileColor,
+      nicknameFont: fields.nicknameFont,
+      nicknameEffect: fields.nicknameEffect,
+      discord: fields.discord,
+      telegram: fields.telegram,
+      website: fields.website,
+      pinnedTrackId: fields.pinnedTrackId,
+      pinnedTrackTitle: fields.pinnedTrackTitle,
+      pinnedTrackArtist: fields.pinnedTrackArtist,
+      pinnedTrackCover: fields.pinnedTrackCover
     });
 
-    const userId = this.getUserId();
     if (!userId || !this.isLoggedIn()) {
       return { success: true, localOnly: true };
     }
 
+    // Asynchronously persist customizations to cloud profile in playlists collection (__aura_user_profile__)
+    this.saveCloudCustomization(userId, {
+      ...(fields.nicknameFont !== undefined ? { nicknameFont: fields.nicknameFont } : {}),
+      ...(fields.nicknameEffect !== undefined ? { nicknameEffect: fields.nicknameEffect } : {}),
+      ...(fields.profileColor !== undefined ? { profileColor: fields.profileColor } : {}),
+      ...(fields.status !== undefined ? { status: fields.status } : {}),
+      ...(fields.bio !== undefined ? { bio: fields.bio } : {}),
+      ...(fields.banner !== undefined ? { banner: fields.banner } : {}),
+      ...(fields.bgUrl !== undefined ? { bgUrl: fields.bgUrl } : {}),
+      ...(fields.avatar !== undefined ? { avatar: fields.avatar } : {}),
+      ...(fields.discord !== undefined ? { discord: fields.discord } : {}),
+      ...(fields.telegram !== undefined ? { telegram: fields.telegram } : {}),
+      ...(fields.website !== undefined ? { website: fields.website } : {})
+    });
+
     try {
-      // 2. Prepare FormData so PocketBase receives files as proper binary blobs for 'file' type fields
+      // 2. Prepare FormData so PocketBase receives avatar as proper binary blob for users collection
       const formData = new FormData();
       if (fields.name) formData.append('name', fields.name);
       if (fields.username) formData.append('username', fields.username);
-      if (fields.status !== undefined) formData.append('status', fields.status);
-      if (fields.bio !== undefined) formData.append('bio', fields.bio);
 
       // Only upload avatar if a binary blob is provided, or if fields.avatar is a new local/external file
       if (fields.avatarBlob) {
@@ -350,36 +750,41 @@ class PocketBaseService {
         }
       }
 
-      // Same for banner
-      if (fields.bannerBlob) {
-        formData.append('banner', fields.bannerBlob, 'banner.jpg');
-      } else if (fields.banner === '') {
-        formData.append('banner', '');
-      } else if (fields.banner) {
-        const isPbFile = fields.banner.includes('/api/files/') || (this.pb.baseUrl && fields.banner.includes(this.pb.baseUrl));
-        if (!isPbFile) {
-          try {
-            const blob = await getBlobWithTimeout(fields.banner, 3000);
-            if (blob) {
-              formData.append('banner', blob, 'banner.jpg');
-            }
-          } catch (e) {
-            console.warn('Banner blob fetch error:', e);
-          }
-        }
-      }
-
       try {
         const record = await this.pb.collection('users').update(userId, formData);
+        if (currentSeq !== this.profileUpdateSeq) {
+          return { success: true, record };
+        }
         const formatted = this.formatUserRecord(record);
-        useAuthStore.getState().updateUser({
+        const currentUser = useAuthStore.getState().user;
+        const localCustom = this.getLocalCustomization(userId);
+        const mergedUser = {
           ...formatted,
-          avatar: fields.avatar === '' ? '' : (formatted.avatar || fields.avatar),
-          banner: fields.banner === '' ? '' : (formatted.banner || fields.banner)
-        });
+          nicknameFont: fields.nicknameFont || formatted.nicknameFont || currentUser?.nicknameFont || localCustom.nicknameFont,
+          nicknameEffect: fields.nicknameEffect || formatted.nicknameEffect || currentUser?.nicknameEffect || localCustom.nicknameEffect,
+          profileColor: fields.profileColor || formatted.profileColor || currentUser?.profileColor || localCustom.profileColor,
+          avatar: fields.avatar === '' ? '' : (formatted.avatar || fields.avatar || currentUser?.avatar),
+          banner: fields.banner === '' ? '' : (fields.banner || formatted.banner || currentUser?.banner),
+          bgUrl: fields.bgUrl === '' ? '' : (fields.bgUrl || formatted.bgUrl || currentUser?.bgUrl)
+        };
+        useAuthStore.getState().updateUser(mergedUser);
+        this.publishUserCard(mergedUser);
         return { success: true, record };
       } catch (err: any) {
         console.warn('FormData profile update failed, falling back to standard fields:', err);
+        if (currentSeq !== this.profileUpdateSeq) {
+          return { success: true };
+        }
+        const currentUser = useAuthStore.getState().user;
+        const localCustom = this.getLocalCustomization(userId);
+        const mergedUser = {
+          nicknameFont: fields.nicknameFont || currentUser?.nicknameFont || localCustom.nicknameFont,
+          nicknameEffect: fields.nicknameEffect || currentUser?.nicknameEffect || localCustom.nicknameEffect,
+          profileColor: fields.profileColor || currentUser?.profileColor || localCustom.profileColor,
+          banner: fields.banner || currentUser?.banner,
+          bgUrl: fields.bgUrl || currentUser?.bgUrl
+        };
+        useAuthStore.getState().updateUser(mergedUser);
         const standardPayload: Record<string, any> = {};
         if (fields.name !== undefined) standardPayload.name = fields.name;
         if (fields.username !== undefined) standardPayload.username = fields.username;
@@ -388,11 +793,265 @@ class PocketBaseService {
             await this.pb.collection('users').update(userId, standardPayload);
           } catch {}
         }
+        const currentFull = useAuthStore.getState().user;
+        if (currentFull) this.publishUserCard(currentFull);
         return { success: true };
       }
     } catch (err) {
       console.warn('Failed to update PocketBase profile:', err);
       return { success: false, error: err };
+    }
+  }
+
+  public async publishUserCard(user: CloudUser) {
+    if (!user || !user.id || !this.isLoggedIn()) return;
+    try {
+      const cardPayload = {
+        user: user.id,
+        track_id: '__aura_user_card__',
+        title: user.username || user.name || 'User',
+        artist: user.name || user.username || 'User',
+        device_info: JSON.stringify({
+          id: user.id,
+          username: user.username || user.name,
+          name: user.name || user.username,
+          avatar: user.avatar,
+          banner: user.banner,
+          profileColor: user.profileColor,
+          nicknameFont: user.nicknameFont,
+          nicknameEffect: user.nicknameEffect,
+          status: user.status,
+          bio: user.bio,
+          discord: user.discord,
+          telegram: user.telegram,
+          website: user.website,
+          pinnedTrackId: user.pinnedTrackId,
+          pinnedTrackTitle: user.pinnedTrackTitle,
+          pinnedTrackArtist: user.pinnedTrackArtist,
+          pinnedTrackCover: user.pinnedTrackCover,
+          created: user.created,
+          accountNumber: user.accountNumber
+        }),
+        listened_seconds: 0,
+        total_duration: 0,
+        is_skipped: false,
+        is_completed: false
+      };
+
+      try {
+        await this.pb.collection('wave_analytics').create(cardPayload);
+      } catch (err) {
+        console.warn('publishUserCard create error:', err);
+      }
+    } catch (e) {
+      console.warn('publishUserCard failed:', e);
+    }
+  }
+
+  public async searchUsers(query: string): Promise<CloudUser[]> {
+    const q = (query || '').trim().replace(/^@/, '');
+    const resultsMap = new Map<string, CloudUser>();
+
+    try {
+      // 1. Search directly in PocketBase users collection
+      const filter = q ? `username ~ "${q}" || name ~ "${q}"` : undefined;
+      const records = await this.pb.collection('users').getList(1, 50, { 
+        filter,
+        sort: '+created',
+        requestKey: null
+      });
+
+      // 2. Fetch all user IDs in registration order to calculate exact account number
+      const allUsers = await this.pb.collection('users').getFullList({
+        sort: '+created',
+        fields: 'id',
+        requestKey: null
+      }).catch(() => []);
+      const orderMap = new Map<string, number>();
+      allUsers.forEach((u, idx) => orderMap.set(u.id, idx + 1));
+
+      for (const r of records.items) {
+        const u = this.formatUserRecord(r);
+        u.accountNumber = orderMap.get(u.id) || 1;
+        resultsMap.set(u.id, u);
+      }
+    } catch (err) {
+      console.warn('Failed to query users from PocketBase:', err);
+    }
+
+    const users = Array.from(resultsMap.values());
+
+    // 3. Enhance with real cloud profile customizations, presence & wave_analytics stats
+    const enhancedUsers = await Promise.all(users.map(async (u) => {
+      try {
+        const [cloudCustom, presence, analyticsRes] = await Promise.all([
+          this.getCloudCustomization(u.id),
+          this.getUserPresence(u.id),
+          this.pb.collection('wave_analytics').getList(1, 100, {
+            filter: `user = "${u.id}" && track_id != "__aura_user_card__"`,
+            requestKey: null
+          }).catch(() => ({ totalItems: 0, items: [] }))
+        ]);
+
+        let plays = cloudCustom?.analytics?.totalPlays;
+        let hours = cloudCustom?.analytics?.totalHoursFormatted;
+
+        if (plays === undefined || hours === undefined) {
+          const rawPlays = analyticsRes.totalItems || 0;
+          let totalSec = 0;
+          if (rawPlays > 0) {
+            if (analyticsRes.items && analyticsRes.items.length > 0) {
+              analyticsRes.items.forEach((it: any) => {
+                const itemSec = (it.listened_seconds && it.listened_seconds >= 60)
+                  ? it.listened_seconds
+                  : (it.total_duration && it.total_duration > 30 ? it.total_duration : 175);
+                totalSec += itemSec;
+              });
+              const avgSec = totalSec / analyticsRes.items.length;
+              totalSec = Math.round(avgSec * rawPlays);
+            } else {
+              totalSec = rawPlays * 175;
+            }
+          }
+          plays = rawPlays;
+          hours = (Math.max(0.1, totalSec / 3600)).toFixed(1).replace('.', ',');
+        }
+
+        return {
+          ...u,
+          avatar: cloudCustom?.avatar || u.avatar,
+          banner: cloudCustom?.banner || u.banner,
+          profileColor: cloudCustom?.profileColor || u.profileColor,
+          nicknameFont: cloudCustom?.nicknameFont || u.nicknameFont,
+          nicknameEffect: cloudCustom?.nicknameEffect || u.nicknameEffect,
+          status: cloudCustom?.status || u.status,
+          bio: cloudCustom?.bio || u.bio,
+          discord: cloudCustom?.discord || u.discord,
+          telegram: cloudCustom?.telegram || u.telegram,
+          website: cloudCustom?.website || u.website,
+          pinnedTrackId: cloudCustom?.pinnedTrackId || u.pinnedTrackId,
+          pinnedTrackTitle: cloudCustom?.pinnedTrackTitle || u.pinnedTrackTitle,
+          pinnedTrackArtist: cloudCustom?.pinnedTrackArtist || u.pinnedTrackArtist,
+          pinnedTrackCover: cloudCustom?.pinnedTrackCover || u.pinnedTrackCover,
+          totalPlays: plays,
+          totalHours: hours,
+          activePresence: presence ? {
+            isPlaying: presence.isPlaying,
+            contextName: presence.contextName || (presence.isPlaying ? 'Моя волна' : ''),
+            contextType: presence.contextType || 'playlist',
+            contextCover: presence.contextCover,
+            trackTitle: presence.trackTitle || '',
+            trackArtist: presence.trackArtist || '',
+            trackCover: presence.coverUrl,
+            trackId: presence.trackId,
+            duration: presence.duration,
+            filePath: presence.filePath
+          } : undefined,
+          lastActive: presence?.lastActive || u.updated || u.created
+        };
+      } catch {
+        return u;
+      }
+    }));
+
+    return enhancedUsers;
+  }
+
+  public async getUserProfile(idOrUsername: string): Promise<CloudUser | null> {
+    try {
+      const target = idOrUsername.trim().replace(/^@/, '');
+      let record: any = null;
+
+      try {
+        record = await this.pb.collection('users').getOne(target, { requestKey: null });
+      } catch {}
+
+      if (!record) {
+        try {
+          const allUsers = await this.pb.collection('users').getFullList({ requestKey: null });
+          const targetLower = target.toLowerCase();
+          record = allUsers.find(u => 
+            (u.username && u.username.toLowerCase() === targetLower) ||
+            (u.name && u.name.toLowerCase() === targetLower) ||
+            (u.id === target)
+          );
+        } catch {}
+      }
+
+      if (!record) return null;
+
+      const baseUser: CloudUser = this.formatUserRecord(record);
+
+      const [cloudCustom, presence, orderNum, analyticsRes] = await Promise.all([
+        this.getCloudCustomization(baseUser.id),
+        this.getUserPresence(baseUser.id),
+        this.getUserOrderNumber(baseUser.created, baseUser.id),
+        this.pb.collection('wave_analytics').getList(1, 100, {
+          filter: `user = "${baseUser.id}" && track_id != "__aura_user_card__"`
+        }).catch(() => ({ totalItems: 0, items: [] }))
+      ]);
+
+      let plays = cloudCustom?.analytics?.totalPlays;
+      let hours = cloudCustom?.analytics?.totalHoursFormatted;
+
+      if (plays === undefined || hours === undefined) {
+        const rawPlays = analyticsRes.totalItems || 0;
+        let totalSec = 0;
+        if (rawPlays > 0) {
+          if (analyticsRes.items && analyticsRes.items.length > 0) {
+            analyticsRes.items.forEach((it: any) => {
+              const itemSec = (it.listened_seconds && it.listened_seconds >= 60)
+                ? it.listened_seconds
+                : (it.total_duration && it.total_duration > 30 ? it.total_duration : 175);
+              totalSec += itemSec;
+            });
+            const avgSec = totalSec / analyticsRes.items.length;
+            totalSec = Math.round(avgSec * rawPlays);
+          } else {
+            totalSec = rawPlays * 175;
+          }
+        }
+        plays = rawPlays;
+        hours = (Math.max(0.1, totalSec / 3600)).toFixed(1).replace('.', ',');
+      }
+
+      return {
+        ...baseUser,
+        accountNumber: orderNum,
+        totalPlays: plays,
+        totalHours: hours,
+        avatar: cloudCustom?.avatar || baseUser.avatar,
+        banner: cloudCustom?.banner || baseUser.banner,
+        profileColor: cloudCustom?.profileColor || baseUser.profileColor,
+        nicknameFont: cloudCustom?.nicknameFont || baseUser.nicknameFont,
+        nicknameEffect: cloudCustom?.nicknameEffect || baseUser.nicknameEffect,
+        status: cloudCustom?.status || baseUser.status,
+        bio: cloudCustom?.bio || baseUser.bio,
+        bgUrl: cloudCustom?.bgUrl || (baseUser as any).bgUrl,
+        discord: cloudCustom?.discord || baseUser.discord,
+        telegram: cloudCustom?.telegram || baseUser.telegram,
+        website: cloudCustom?.website || baseUser.website,
+        pinnedTrackId: cloudCustom?.pinnedTrackId || baseUser.pinnedTrackId,
+        pinnedTrackTitle: cloudCustom?.pinnedTrackTitle || baseUser.pinnedTrackTitle,
+        pinnedTrackArtist: cloudCustom?.pinnedTrackArtist || baseUser.pinnedTrackArtist,
+        pinnedTrackCover: cloudCustom?.pinnedTrackCover || baseUser.pinnedTrackCover,
+        activePresence: presence ? {
+          isPlaying: presence.isPlaying,
+          contextName: presence.contextName || (presence.isPlaying ? 'Моя волна' : ''),
+          contextType: presence.contextType || 'playlist',
+          contextCover: presence.contextCover,
+          trackTitle: presence.trackTitle || '',
+          trackArtist: presence.trackArtist || '',
+          trackCover: presence.coverUrl,
+          trackId: presence.trackId,
+          duration: presence.duration,
+          filePath: presence.filePath
+        } : undefined,
+        lastActive: presence?.lastActive || baseUser.updated || baseUser.created
+      };
+    } catch (e) {
+      console.warn('getUserProfile error:', e);
+      return null;
     }
   }
 
@@ -489,6 +1148,10 @@ class PocketBaseService {
       this.unsubscribeForYou();
       this.unsubscribeForYou = null;
     }
+    if (this.unsubscribeFriendRequests) {
+      this.unsubscribeFriendRequests();
+      this.unsubscribeFriendRequests = null;
+    }
     this.pb.authStore.clear();
     useAuthStore.getState().logout();
   }
@@ -501,12 +1164,16 @@ class PocketBaseService {
     useAuthStore.getState().setSyncing(true);
     useAuthStore.getState().setSyncStatus('Синхронизация...');
     try {
-      await Promise.all([
+      await Promise.allSettled([
         this.syncFavorites(),
         this.syncPlaylists(),
         this.syncHistory(),
         this.syncForYou()
       ]);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('aura-sync-all-complete'));
+        window.dispatchEvent(new CustomEvent('aura-friends-changed'));
+      }
       useAuthStore.getState().setLastSyncTime(Date.now());
       useAuthStore.getState().setSyncStatus('Синхронизировано');
     } catch (err) {
@@ -524,7 +1191,8 @@ class PocketBaseService {
 
     try {
       const records = await this.pb.collection('favorites').getFullList({
-        filter: `user = "${userId}"`
+        filter: `user = "${userId}"`,
+        requestKey: null
       });
 
       const serverTracks: Track[] = records.map(r => ({
@@ -547,9 +1215,9 @@ class PocketBaseService {
         JSON.parse(localStorage.getItem(favSyncKey) || '[]')
       );
 
-      // Detect tracks deleted on other devices
+      // Only detect tracks deleted on other devices if the server actually returned tracks
       const deletedRemotely = new Set<string>();
-      if (previouslySynced.size > 0) {
+      if (previouslySynced.size > 0 && serverTracks.length > 0) {
         for (const id of previouslySynced) {
           if (!serverMap.has(id)) {
             deletedRemotely.add(id);
@@ -560,7 +1228,7 @@ class PocketBaseService {
       // 1. Upload local favorites that are NOT on server and NOT deleted remotely
       for (const track of localLiked) {
         if (deletedRemotely.has(track.id)) continue;
-        if (!serverMap.has(track.id) && !previouslySynced.has(track.id)) {
+        if (!serverMap.has(track.id)) {
           try {
             await this.pb.collection('favorites').create({
               user: userId,
@@ -571,7 +1239,7 @@ class PocketBaseService {
               cover_url: track.originalCoverUrl || '',
               duration: track.duration || 0,
               file_path: track.filePath || ''
-            });
+            }, { requestKey: null });
             serverMap.set(track.id, track);
           } catch (e) {
             console.warn('Failed to upload favorite to cloud:', e);
@@ -589,8 +1257,10 @@ class PocketBaseService {
         }
       }
 
-      if (merged.length !== localLiked.length) {
+      if (merged.length !== localLiked.length || merged.some((t, i) => localLiked[i]?.id !== t.id)) {
+        this.isInternalSync = true;
         collectionStore.reorderLikedTracks(merged);
+        this.isInternalSync = false;
       }
 
       // Save state of synced IDs
@@ -604,7 +1274,7 @@ class PocketBaseService {
 
   public async onTrackLiked(track: Track, isLiked: boolean) {
     const userId = this.getUserId();
-    if (!userId) return;
+    if (!userId || this.isInternalSync || this.isSyncingFavorites) return;
 
     const favSyncKey = `aura_synced_favs_${userId}`;
     const synced = new Set<string>(JSON.parse(localStorage.getItem(favSyncKey) || '[]'));
@@ -615,7 +1285,8 @@ class PocketBaseService {
         localStorage.setItem(favSyncKey, JSON.stringify(Array.from(synced)));
 
         const existing = await this.pb.collection('favorites').getList(1, 1, {
-          filter: `user = "${userId}" && track_id = "${track.id}"`
+          filter: `user = "${userId}" && track_id = "${track.id}"`,
+          requestKey: null
         });
         if (existing.totalItems === 0) {
           await this.pb.collection('favorites').create({
@@ -627,17 +1298,18 @@ class PocketBaseService {
             cover_url: track.originalCoverUrl || '',
             duration: track.duration || 0,
             file_path: track.filePath || ''
-          });
+          }, { requestKey: null });
         }
       } else {
         synced.delete(track.id);
         localStorage.setItem(favSyncKey, JSON.stringify(Array.from(synced)));
 
         const existing = await this.pb.collection('favorites').getList(1, 1, {
-          filter: `user = "${userId}" && track_id = "${track.id}"`
+          filter: `user = "${userId}" && track_id = "${track.id}"`,
+          requestKey: null
         });
         if (existing.items.length > 0) {
-          await this.pb.collection('favorites').delete(existing.items[0].id);
+          await this.pb.collection('favorites').delete(existing.items[0].id, { requestKey: null });
         }
       }
     } catch (err) {
@@ -652,16 +1324,19 @@ class PocketBaseService {
 
     try {
       const records = await this.pb.collection('playlists').getFullList({
-        filter: `user = "${userId}"`
+        filter: `user = "${userId}"`,
+        requestKey: null
       });
 
-      const serverPlaylists = records.map(r => ({
-        id: r.id,
-        name: r.name,
-        coverUrl: r.cover_url || undefined,
-        tracks: Array.isArray(r.tracks_json) ? r.tracks_json : [],
-        cloudId: r.id
-      }));
+      const serverPlaylists = records
+        .filter(r => r.name !== '__aura_user_profile__')
+        .map(r => ({
+          id: r.id,
+          name: r.name,
+          coverUrl: r.cover_url || undefined,
+          tracks: Array.isArray(r.tracks_json) ? r.tracks_json : [],
+          cloudId: r.id
+        }));
 
       const collectionStore = useCollectionStore.getState();
       const localPlaylists = [...collectionStore.playlists];
@@ -673,21 +1348,14 @@ class PocketBaseService {
         serverById.set(sp.id, sp);
       }
 
-      const localByName = new Map<string, Playlist>();
-      const localByCloudId = new Map<string, Playlist>();
-      for (const lp of localPlaylists) {
-        localByName.set(lp.name.trim().toLowerCase(), lp);
-        if (lp.cloudId) localByCloudId.set(lp.cloudId, lp);
-      }
-
       const plSyncKey = `aura_synced_pls_${userId}`;
       const previouslySyncedPls = new Set<string>(
         JSON.parse(localStorage.getItem(plSyncKey) || '[]')
       );
 
-      // Detect playlists deleted on other devices
+      // Detect playlists deleted on other devices only if server returned items
       const deletedPlsRemotely = new Set<string>();
-      if (previouslySyncedPls.size > 0) {
+      if (previouslySyncedPls.size > 0 && serverPlaylists.length > 0) {
         for (const cloudId of previouslySyncedPls) {
           if (!serverById.has(cloudId)) {
             deletedPlsRemotely.add(cloudId);
@@ -707,8 +1375,8 @@ class PocketBaseService {
         if (localPl) {
           localPl.cloudId = serverPl.id;
 
-          // Merge cover: if server has cover, take it
-          if (serverPl.coverUrl) {
+          // Merge cover: if server has cover and local doesn't, take it
+          if (serverPl.coverUrl && !localPl.coverUrl) {
             localPl.coverUrl = serverPl.coverUrl;
           }
 
@@ -732,7 +1400,7 @@ class PocketBaseService {
               await this.pb.collection('playlists').update(serverPl.id, {
                 tracks_json: localPl.tracks,
                 cover_url: portableCover || serverPl.coverUrl || ''
-              });
+              }, { requestKey: null });
             } catch (err) {
               console.warn('Failed to update server playlist:', err);
             }
@@ -752,6 +1420,7 @@ class PocketBaseService {
 
       // 2. Upload any local playlists not present on server and not remotely deleted
       for (const localPl of workingLocalPlaylists) {
+        if (localPl.name === '__aura_user_profile__') continue;
         const key = localPl.name.trim().toLowerCase();
         if (!serverByName.has(key) && !localPl.cloudId) {
           try {
@@ -761,7 +1430,7 @@ class PocketBaseService {
               name: localPl.name,
               tracks_json: localPl.tracks || [],
               cover_url: portableCover || ''
-            });
+            }, { requestKey: null });
             localPl.cloudId = created.id;
             serverByName.set(key, {
               id: created.id,
@@ -785,7 +1454,6 @@ class PocketBaseService {
       this.isInternalSync = false;
     } catch (err) {
       console.error('syncPlaylists error:', err);
-      throw err;
     } finally {
       this.isSyncingPlaylists = false;
     }
@@ -795,7 +1463,7 @@ class PocketBaseService {
 
   public onPlaylistModified(playlist: Playlist) {
     const userId = this.getUserId();
-    if (!userId || this.isInternalSync || this.isSyncingPlaylists) return;
+    if (!userId || this.isInternalSync || this.isSyncingPlaylists || playlist.name === '__aura_user_profile__') return;
 
     if (this.playlistDebounceTimers.has(playlist.id)) {
       clearTimeout(this.playlistDebounceTimers.get(playlist.id));
@@ -844,7 +1512,7 @@ class PocketBaseService {
 
   public async onPlaylistDeleted(name: string) {
     const userId = this.getUserId();
-    if (!userId || this.isInternalSync) return;
+    if (!userId || this.isInternalSync || name === '__aura_user_profile__') return;
 
     try {
       const safeName = name.replace(/["\\]/g, '');
@@ -1042,16 +1710,48 @@ class PocketBaseService {
     }, 1500);
   }
 
-  public subscribeRealtime() {
+  public async subscribeRealtime() {
     const userId = this.getUserId();
     if (!userId) return;
 
     try {
+      // Clean up previous subscriptions before establishing fresh SSE
+      if (this.unsubscribeFavorites) {
+        try { this.unsubscribeFavorites(); } catch {}
+        this.unsubscribeFavorites = null;
+      }
+      if (this.unsubscribePlaylists) {
+        try { this.unsubscribePlaylists(); } catch {}
+        this.unsubscribePlaylists = null;
+      }
+      if (this.unsubscribeDevices) {
+        try { this.unsubscribeDevices(); } catch {}
+        this.unsubscribeDevices = null;
+      }
+      if (this.unsubscribeUser) {
+        try { this.unsubscribeUser(); } catch {}
+        this.unsubscribeUser = null;
+      }
+      if (this.unsubscribeHistory) {
+        try { this.unsubscribeHistory(); } catch {}
+        this.unsubscribeHistory = null;
+      }
+      if (this.unsubscribeForYou) {
+        try { this.unsubscribeForYou(); } catch {}
+        this.unsubscribeForYou = null;
+      }
+      if (this.unsubscribeFriendRequests) {
+        try { this.unsubscribeFriendRequests(); } catch {}
+        this.unsubscribeFriendRequests = null;
+      }
+
       // 1. Subscribe to favorites
       this.pb.collection('favorites').subscribe('*', (e) => {
         if (this.isSyncingFavorites || this.isInternalSync) return;
+        if (!e.record || e.record.user !== userId) return;
+
         const collectionStore = useCollectionStore.getState();
-        if (e.action === 'create' && e.record.user === userId) {
+        if (e.action === 'create') {
           const newTrack: Track = {
             id: e.record.track_id,
             title: e.record.title,
@@ -1063,13 +1763,17 @@ class PocketBaseService {
             filePath: e.record.file_path || ''
           };
           if (!collectionStore.isLiked(newTrack.id)) {
+            this.isInternalSync = true;
             collectionStore.reorderLikedTracks([newTrack, ...collectionStore.likedTracks]);
+            this.isInternalSync = false;
           }
         } else if (e.action === 'delete') {
           const trackId = e.record.track_id;
           if (trackId && collectionStore.isLiked(trackId)) {
+            this.isInternalSync = true;
             const filtered = collectionStore.likedTracks.filter(t => t.id !== trackId);
             collectionStore.reorderLikedTracks(filtered);
+            this.isInternalSync = false;
           }
         }
       }).then(unsub => {
@@ -1081,7 +1785,29 @@ class PocketBaseService {
       // 2. Subscribe to playlists
       this.pb.collection('playlists').subscribe('*', (e) => {
         if (this.isSyncingPlaylists || this.isInternalSync) return;
-        if (e.record.user !== userId) return;
+        if (!e.record || e.record.user !== userId) return;
+
+        if (e.record.name === '__aura_user_profile__') {
+          if (e.action === 'create' || e.action === 'update') {
+            const tj = e.record.tracks_json;
+            const custom = (typeof tj === 'object' && !Array.isArray(tj)) ? tj : (Array.isArray(tj) && tj.length > 0 && typeof tj[0] === 'object' ? tj[0] : {});
+            if (custom && Object.keys(custom).length > 0) {
+              this.saveLocalCustomization(userId, custom);
+              useAuthStore.getState().updateUser({
+                ...(custom.nicknameFont ? { nicknameFont: custom.nicknameFont } : {}),
+                ...(custom.nicknameEffect ? { nicknameEffect: custom.nicknameEffect } : {}),
+                ...(custom.profileColor ? { profileColor: custom.profileColor } : {}),
+                ...(custom.status ? { status: custom.status } : {}),
+                ...(custom.bio ? { bio: custom.bio } : {}),
+                ...(custom.banner ? { banner: custom.banner } : {}),
+                ...(custom.discord ? { discord: custom.discord } : {}),
+                ...(custom.telegram ? { telegram: custom.telegram } : {}),
+                ...(custom.website ? { website: custom.website } : {})
+              });
+            }
+          }
+          return;
+        }
 
         const collectionStore = useCollectionStore.getState();
         const currentPlaylists = [...collectionStore.playlists];
@@ -1128,8 +1854,11 @@ class PocketBaseService {
 
       // 3. Subscribe to active devices presence
       this.pb.collection('device_sync').subscribe('*', (e) => {
-        if (e.record.user !== userId) return;
+        if (!e.record || e.record.user !== userId) return;
         this.notifyDeviceListeners();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('aura-device-playback-updated', { detail: e.record }));
+        }
       }).then(unsub => {
         this.unsubscribeDevices = unsub;
       }).catch(err => {
@@ -1137,16 +1866,16 @@ class PocketBaseService {
       });
 
       // 4. Subscribe to user profile updates (realtime sync between phone/desktop)
-      if (this.unsubscribeUser) {
-        this.unsubscribeUser();
-        this.unsubscribeUser = null;
-      }
       this.pb.collection('users').subscribe(userId, (e) => {
         if (e.action === 'update' && e.record) {
           const formatted = this.formatUserRecord(e.record);
           const currentUser = useAuthStore.getState().user;
+          const localCustom = this.getLocalCustomization(userId);
           useAuthStore.getState().updateUser({
             ...formatted,
+            nicknameFont: formatted.nicknameFont || currentUser?.nicknameFont || localCustom.nicknameFont,
+            nicknameEffect: formatted.nicknameEffect || currentUser?.nicknameEffect || localCustom.nicknameEffect,
+            profileColor: formatted.profileColor || currentUser?.profileColor || localCustom.profileColor,
             avatar: formatted.avatar || currentUser?.avatar,
             banner: formatted.banner || currentUser?.banner,
             status: formatted.status || currentUser?.status,
@@ -1160,13 +1889,9 @@ class PocketBaseService {
       });
 
       // 5. Subscribe to listening history
-      if (this.unsubscribeHistory) {
-        this.unsubscribeHistory();
-        this.unsubscribeHistory = null;
-      }
       this.pb.collection('history').subscribe('*', (e) => {
         if (this.isSyncingHistory || this.isInternalSync) return;
-        if (e.record.user !== userId) return;
+        if (!e.record || e.record.user !== userId) return;
 
         if (e.action === 'create' || e.action === 'update') {
           const serverTracks = Array.isArray(e.record.tracks_json) ? e.record.tracks_json : [];
@@ -1183,13 +1908,9 @@ class PocketBaseService {
       });
 
       // 6. Subscribe to For You mix & recommendations
-      if (this.unsubscribeForYou) {
-        this.unsubscribeForYou();
-        this.unsubscribeForYou = null;
-      }
       this.pb.collection('for_you').subscribe('*', (e) => {
         if (this.isSyncingForYou || this.isInternalSync) return;
-        if (e.record.user !== userId) return;
+        if (!e.record || e.record.user !== userId) return;
 
         if (e.action === 'create' || e.action === 'update') {
           const serverMix = Array.isArray(e.record.mix_tracks_json) ? e.record.mix_tracks_json : [];
@@ -1213,42 +1934,152 @@ class PocketBaseService {
       }).catch(err => {
         console.warn('Realtime for_you subscribe error:', err);
       });
+
+      // 7. Subscribe to friend requests & friendships
+      this.pb.collection('friend_requests').subscribe('*', () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('aura-friends-changed'));
+        }
+      }).then(unsub => {
+        this.unsubscribeFriendRequests = unsub;
+      }).catch(err => {
+        console.warn('Realtime friend_requests subscribe error:', err);
+      });
     } catch (e) {
       console.warn('PocketBase realtime subscribe error:', e);
     }
   }
 
-  public async updateDevicePresence(track: Track | null, progress: number, isPlaying: boolean) {
+  public async updateDevicePresence(
+    track: Track | null, 
+    progress: number, 
+    isPlaying: boolean,
+    contextInfo?: { title?: string; type?: string; coverUrl?: string }
+  ) {
     const userId = this.getUserId();
-    if (!userId || !track) return;
+    if (!userId) return;
 
     try {
-      const deviceName = this.getDeviceName();
-      const existing = await this.pb.collection('device_sync').getList(1, 1, {
-        filter: `user = "${userId}" && device_name = "${deviceName}"`
-      });
+      const baseDeviceName = this.getDeviceName();
+      const clientDeviceId = this.getClientDeviceId();
+      const ctxTitle = contextInfo?.title || (track?.id?.startsWith('vibe_') ? 'Моя волна' : '');
+      const ctxCover = contextInfo?.coverUrl || '';
+      const ctxType = contextInfo?.type || (track?.id?.startsWith('vibe_') ? 'wave' : 'playlist');
+
+      // Encode context & client id cleanly
+      const fullDeviceName = `${baseDeviceName} [id:${clientDeviceId}]${ctxTitle ? `:::${ctxTitle}:::${ctxCover}:::${ctxType}` : ''}`;
 
       const payload = {
         user: userId,
-        device_name: deviceName,
-        track_id: track.id,
-        title: track.title,
-        artist: track.artist,
-        cover_url: track.originalCoverUrl || '',
-        file_path: track.filePath || '',
-        duration: track.duration || 0,
-        progress: Math.round(progress),
-        is_playing: isPlaying
+        device_name: fullDeviceName,
+        track_id: track?.id || '',
+        title: track?.title || '',
+        artist: track?.artist || '',
+        cover_url: track?.originalCoverUrl || '',
+        file_path: track?.filePath || '',
+        duration: track?.duration || 0,
+        progress: Math.round(progress || 0),
+        is_playing: !!isPlaying
       };
 
-      if (existing.items.length > 0) {
-        await this.pb.collection('device_sync').update(existing.items[0].id, payload);
-      } else {
-        await this.pb.collection('device_sync').create(payload);
+      const savedRecordId = typeof window !== 'undefined' ? localStorage.getItem('aura_my_device_record_id') : null;
+      let recordUpdated = false;
+
+      if (savedRecordId) {
+        try {
+          await this.pb.collection('device_sync').update(savedRecordId, payload, { requestKey: null });
+          recordUpdated = true;
+        } catch (e: any) {
+          if (e?.status === 404) {
+            localStorage.removeItem('aura_my_device_record_id');
+          }
+        }
+      }
+
+      if (!recordUpdated) {
+        const existing = await this.pb.collection('device_sync').getList(1, 10, {
+          filter: `user = "${userId}"`,
+          sort: '-updated',
+          requestKey: null
+        });
+
+        const myRecord = existing.items.find((item: any) => 
+          item.device_name?.includes(`[id:${clientDeviceId}]`) ||
+          this.cleanDeviceName(item.device_name) === baseDeviceName
+        );
+
+        if (myRecord) {
+          await this.pb.collection('device_sync').update(myRecord.id, payload, { requestKey: null });
+          localStorage.setItem('aura_my_device_record_id', myRecord.id);
+        } else {
+          const created = await this.pb.collection('device_sync').create(payload, { requestKey: null });
+          localStorage.setItem('aura_my_device_record_id', created.id);
+        }
       }
     } catch {
       // Presence updates are silent
     }
+  }
+
+  public async getUserPresence(userId: string): Promise<{
+    isPlaying: boolean;
+    trackTitle?: string;
+    trackArtist?: string;
+    coverUrl?: string;
+    trackId?: string;
+    duration?: number;
+    filePath?: string;
+    contextName?: string;
+    contextType?: 'wave' | 'playlist' | 'collection';
+    contextCover?: string;
+    lastActive?: string;
+  } | null> {
+    try {
+      const records = await this.pb.collection('device_sync').getList(1, 1, {
+        filter: `user = "${userId}"`,
+        sort: '-updated',
+        requestKey: null
+      });
+      if (records.items.length > 0) {
+        const item: any = records.items[0];
+        let contextName = '';
+        let contextCover = '';
+        let contextType: 'wave' | 'playlist' | 'collection' = 'playlist';
+
+        if (item.device_name && item.device_name.includes(':::')) {
+          const parts = item.device_name.split(':::');
+          contextName = parts[1] || '';
+          contextCover = parts[2] || '';
+          if (parts[3] === 'wave' || parts[3] === 'playlist' || parts[3] === 'collection') {
+            contextType = parts[3];
+          }
+        }
+        if (!contextName && item.track_id && item.track_id.startsWith('vibe_')) {
+          contextName = 'Моя волна';
+          contextType = 'wave';
+        }
+
+        const isRecentlyActive = (Date.now() - new Date(item.updated).getTime()) < 3 * 60 * 1000;
+        const isPlaying = !!item.is_playing && isRecentlyActive;
+
+        return {
+          isPlaying,
+          trackTitle: item.title,
+          trackArtist: item.artist,
+          coverUrl: item.cover_url,
+          trackId: item.track_id,
+          duration: item.duration,
+          filePath: item.file_path,
+          contextName: contextName || (isPlaying ? 'Моя волна' : undefined),
+          contextType,
+          contextCover: contextCover || item.cover_url,
+          lastActive: item.updated
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return null;
   }
 
   public async getActiveDevices() {
@@ -1256,11 +2087,53 @@ class PocketBaseService {
     if (!userId) return [];
 
     try {
-      return await this.pb.collection('device_sync').getFullList({
+      const records = await this.pb.collection('device_sync').getFullList({
         filter: `user = "${userId}"`,
-        sort: '-updated'
+        sort: '-updated',
+        requestKey: null
       });
-    } catch {
+
+      // Filter out ancient records (older than 5 days if not playing) and deduplicate by cleaned device name
+      const seen = new Set<string>();
+      const result: any[] = [];
+      const now = Date.now();
+      const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+
+      for (const rec of records) {
+        const updatedTime = new Date(rec.updated).getTime();
+        if (!rec.is_playing && (now - updatedTime > FIVE_DAYS_MS)) {
+          continue;
+        }
+
+        const cleanName = this.cleanDeviceName(rec.device_name);
+        if (!seen.has(cleanName)) {
+          seen.add(cleanName);
+          result.push(rec);
+        }
+      }
+
+      // Ensure this current device is represented in the list
+      const myCleanName = this.getDeviceName();
+      const hasMe = result.some(d => this.isCurrentDevice(d) || this.cleanDeviceName(d.device_name) === myCleanName);
+      if (!hasMe) {
+        const pState = usePlayerStore.getState();
+        const curTrack = pState.currentTrackIndex >= 0 ? pState.queue[pState.currentTrackIndex] : null;
+        result.unshift({
+          id: localStorage.getItem('aura_my_device_record_id') || 'local_current',
+          device_name: myCleanName,
+          title: curTrack?.title || '',
+          artist: curTrack?.artist || '',
+          is_playing: pState.isPlaying,
+          track_id: curTrack?.id || '',
+          progress: pState.progress || 0,
+          duration: curTrack?.duration || 0,
+          updated: new Date().toISOString()
+        });
+      }
+
+      return result;
+    } catch (err) {
+      console.warn('getActiveDevices error:', err);
       return [];
     }
   }
@@ -1288,6 +2161,229 @@ class PocketBaseService {
 
     // Immediately notify cloud of current device presence
     this.updateDevicePresence(trackToPlay, dev.progress || 0, true);
+  }
+
+  // ===================== FRIEND REQUESTS & SOCIAL CLOUD =====================
+
+  public async sendFriendRequest(receiverId: string): Promise<boolean> {
+    const senderId = this.getUserId();
+    if (!senderId || !receiverId || senderId === receiverId) return false;
+
+    try {
+      // Check if request already exists in either direction
+      const existing = await this.pb.collection('friend_requests').getList(1, 1, {
+        filter: `(sender = "${senderId}" && receiver = "${receiverId}") || (sender = "${receiverId}" && receiver = "${senderId}")`
+      });
+
+      if (existing.items.length > 0) {
+        const item = existing.items[0];
+        // If the other user already sent a pending request to us, auto-accept it!
+        if (item.sender === receiverId && item.status === 'pending') {
+          await this.pb.collection('friend_requests').update(item.id, { status: 'accepted' });
+          return true;
+        }
+        return true;
+      }
+
+      await this.pb.collection('friend_requests').create({
+        sender: senderId,
+        receiver: receiverId,
+        status: 'pending'
+      });
+      return true;
+    } catch (err) {
+      console.warn('sendFriendRequest error:', err);
+      return false;
+    }
+  }
+
+  public async acceptFriendRequest(senderId: string): Promise<boolean> {
+    const currentUserId = this.getUserId();
+    if (!currentUserId || !senderId) return false;
+
+    try {
+      const existing = await this.pb.collection('friend_requests').getList(1, 1, {
+        filter: `sender = "${senderId}" && receiver = "${currentUserId}" && status = "pending"`
+      });
+      if (existing.items.length > 0) {
+        await this.pb.collection('friend_requests').update(existing.items[0].id, {
+          status: 'accepted'
+        });
+        return true;
+      }
+    } catch (err) {
+      console.warn('acceptFriendRequest error:', err);
+    }
+    return false;
+  }
+
+  public async rejectFriendRequest(senderId: string): Promise<boolean> {
+    const currentUserId = this.getUserId();
+    if (!currentUserId || !senderId) return false;
+
+    try {
+      const existing = await this.pb.collection('friend_requests').getList(1, 1, {
+        filter: `sender = "${senderId}" && receiver = "${currentUserId}"`
+      });
+      if (existing.items.length > 0) {
+        await this.pb.collection('friend_requests').delete(existing.items[0].id);
+        return true;
+      }
+    } catch (err) {
+      console.warn('rejectFriendRequest error:', err);
+    }
+    return false;
+  }
+
+  public async cancelOutgoingRequest(receiverId: string): Promise<boolean> {
+    const currentUserId = this.getUserId();
+    if (!currentUserId || !receiverId) return false;
+
+    try {
+      const existing = await this.pb.collection('friend_requests').getList(1, 1, {
+        filter: `sender = "${currentUserId}" && receiver = "${receiverId}" && status = "pending"`
+      });
+      if (existing.items.length > 0) {
+        await this.pb.collection('friend_requests').delete(existing.items[0].id);
+        return true;
+      }
+    } catch (err) {
+      console.warn('cancelOutgoingRequest error:', err);
+    }
+    return false;
+  }
+
+  public async removeFriend(friendId: string): Promise<boolean> {
+    const currentUserId = this.getUserId();
+    if (!currentUserId || !friendId) return false;
+
+    try {
+      const existing = await this.pb.collection('friend_requests').getList(1, 1, {
+        filter: `(sender = "${currentUserId}" && receiver = "${friendId}") || (sender = "${friendId}" && receiver = "${currentUserId}")`
+      });
+      if (existing.items.length > 0) {
+        await this.pb.collection('friend_requests').delete(existing.items[0].id);
+        return true;
+      }
+    } catch (err) {
+      console.warn('removeFriend error:', err);
+    }
+    return false;
+  }
+
+  public async getCloudFriendships(): Promise<{
+    friends: CloudUser[];
+    incoming: CloudUser[];
+    outgoing: CloudUser[];
+  }> {
+    const currentUserId = this.getUserId();
+    if (!currentUserId) {
+      return { friends: [], incoming: [], outgoing: [] };
+    }
+
+    try {
+      const list = await this.pb.collection('friend_requests').getFullList({
+        filter: `sender = "${currentUserId}" || receiver = "${currentUserId}"`
+      });
+
+      const friendUserIds: string[] = [];
+      const incomingUserIds: string[] = [];
+      const outgoingUserIds: string[] = [];
+
+      for (const req of list) {
+        if (req.status === 'accepted') {
+          const otherId = req.sender === currentUserId ? req.receiver : req.sender;
+          if (otherId && !friendUserIds.includes(otherId)) friendUserIds.push(otherId);
+        } else if (req.status === 'pending') {
+          if (req.receiver === currentUserId) {
+            if (!incomingUserIds.includes(req.sender)) incomingUserIds.push(req.sender);
+          } else if (req.sender === currentUserId) {
+            if (!outgoingUserIds.includes(req.receiver)) outgoingUserIds.push(req.receiver);
+          }
+        }
+      }
+
+      // Mutual exclusion: friends cannot be simultaneously pending
+      const cleanIncomingIds = incomingUserIds.filter(id => !friendUserIds.includes(id));
+      const cleanOutgoingIds = outgoingUserIds.filter(id => !friendUserIds.includes(id));
+
+      // Fetch user profiles for all involved IDs
+      const allIds = Array.from(new Set([...friendUserIds, ...cleanIncomingIds, ...cleanOutgoingIds]));
+      const userMap = new Map<string, CloudUser>();
+      await Promise.all(allIds.map(async (id) => {
+        try {
+          let u = await this.getUserProfile(id);
+          if (!u) {
+            const rawRec = await this.pb.collection('users').getOne(id).catch(() => null);
+            if (rawRec) u = this.formatUserRecord(rawRec);
+          }
+          if (u) userMap.set(id, u);
+        } catch {
+          try {
+            const rawRec = await this.pb.collection('users').getOne(id).catch(() => null);
+            if (rawRec) userMap.set(id, this.formatUserRecord(rawRec));
+          } catch {}
+        }
+      }));
+
+      // Automatically clean up orphaned friend_requests where the other user was deleted from the database
+      for (const req of list) {
+        const otherId = req.sender === currentUserId ? req.receiver : req.sender;
+        if (otherId && !userMap.has(otherId)) {
+          this.pb.collection('friend_requests').delete(req.id).catch(() => {});
+        }
+      }
+
+      const friends = friendUserIds.map(id => userMap.get(id)).filter(Boolean) as CloudUser[];
+      const incoming = cleanIncomingIds.map(id => userMap.get(id)).filter(Boolean) as CloudUser[];
+      const outgoing = cleanOutgoingIds.map(id => userMap.get(id)).filter(Boolean) as CloudUser[];
+
+      return { friends, incoming, outgoing };
+    } catch (err) {
+      console.warn('getCloudFriendships error:', err);
+      return { friends: [], incoming: [], outgoing: [] };
+    }
+  }
+
+  public async getUserFriends(userId: string): Promise<CloudUser[]> {
+    if (!userId) return [];
+    try {
+      const list = await this.pb.collection('friend_requests').getFullList({
+        filter: `(sender = "${userId}" || receiver = "${userId}") && status = "accepted"`
+      });
+
+      const friendUserIds: string[] = [];
+      const reqMap = new Map<string, string>();
+      for (const req of list) {
+        const otherId = req.sender === userId ? req.receiver : req.sender;
+        if (otherId && !friendUserIds.includes(otherId)) {
+          friendUserIds.push(otherId);
+          reqMap.set(otherId, req.id);
+        }
+      }
+
+      const friends: CloudUser[] = [];
+      await Promise.all(friendUserIds.map(async (fid) => {
+        try {
+          const profile = await this.getUserProfile(fid);
+          if (profile) {
+            friends.push(profile);
+          } else {
+            // User was deleted from database! Purge orphaned friend_requests
+            const reqId = reqMap.get(fid);
+            if (reqId) this.pb.collection('friend_requests').delete(reqId).catch(() => {});
+          }
+        } catch {
+          const reqId = reqMap.get(fid);
+          if (reqId) this.pb.collection('friend_requests').delete(reqId).catch(() => {});
+        }
+      }));
+
+      return friends;
+    } catch (err) {
+      console.warn('getUserFriends error:', err);
+      return [];
+    }
   }
 }
 

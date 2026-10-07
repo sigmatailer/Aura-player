@@ -7,8 +7,39 @@ export interface CloudUser {
   username?: string;
   avatar?: string;
   banner?: string;
+  bgUrl?: string;
   bio?: string;
   status?: string;
+  profileColor?: string;
+  nicknameFont?: 'default' | 'caveat' | 'spray' | 'beastly' | 'pixel' | 'retro';
+  nicknameEffect?: 'none' | 'animated' | 'neon' | 'cartoon' | 'highlight' | '3d' | 'retro';
+  discord?: string;
+  telegram?: string;
+  website?: string;
+  pinnedTrackId?: string;
+  pinnedTrackTitle?: string;
+  pinnedTrackArtist?: string;
+  pinnedTrackCover?: string;
+  created?: string;
+  updated?: string;
+  accountNumber?: number;
+  friendsCount?: number;
+  subscribersCount?: number;
+  totalPlays?: number;
+  totalHours?: number | string;
+  lastActive?: string;
+  activePresence?: {
+    isPlaying: boolean;
+    contextName: string;
+    contextType: 'wave' | 'playlist' | 'collection';
+    contextCover?: string;
+    trackTitle: string;
+    trackArtist: string;
+    trackCover?: string;
+    trackId?: string;
+    duration?: number;
+    filePath?: string;
+  };
 }
 
 interface AuthState {
@@ -68,6 +99,9 @@ export const useAuthStore = create<AuthState>((set) => {
         localStorage.removeItem('aura_pb_user');
       }
       set({ user, isAuthModalOpen: false });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('aura-auth-changed', { detail: { user } }));
+      }
     },
 
     updateUser: (fields) => {
@@ -110,6 +144,9 @@ export const useAuthStore = create<AuthState>((set) => {
       localStorage.removeItem('pocketbase_auth');
       sessionStorage.removeItem('aura_auth_skipped');
       set({ user: null, token: null, lastSyncTime: null, syncStatus: 'Не авторизован', isAuthModalOpen: true });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('aura-auth-changed', { detail: { user: null } }));
+      }
     }
   };
 });

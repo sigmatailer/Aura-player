@@ -4,7 +4,7 @@ import {
   X, HardDrive, 
   Moon, Sun, Monitor, Plus, Image as ImageIcon, Trash2,
   ChevronLeft, ChevronRight, Upload, Package, Disc, Sparkles, Check, Camera, Loader2,
-  ExternalLink, Copy, KeyRound
+  Send, Globe, Pin, Music
 } from 'lucide-react';
 import { useSettingsStore, usePlayerStore } from '../store/usePlayerStore';
 import { useAppSettingsStore } from '../store/useAppSettingsStore';
@@ -12,10 +12,21 @@ import { useThemeStore, PRESET_THEMES, AVAILABLE_FONTS, isVideoUrl, MediaLibrary
 import { useAuthStore, CloudUser } from '../store/useAuthStore';
 import { pocketBaseService } from '../services/PocketBaseService';
 import { useCacheStore, CacheStats } from '../store/useCacheStore';
+import { 
+  PROFILE_COLORS, NICKNAME_FONTS, NICKNAME_EFFECTS, 
+  getNicknameFontFamily, getNicknameEffectStyle, 
+  NicknameFont, NicknameEffect 
+} from '../utils/profileStyles';
 import { open } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { convertFileSrc } from '@tauri-apps/api/core';
+
+// Discord Icon SVG
+const DiscordIcon: React.FC<{ size?: number; className?: string }> = ({ size = 15, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.893.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+  </svg>
+);
 
 interface SettingsDrawerProps {
   onClose: () => void;
@@ -52,7 +63,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     windowOpacity, setWindowOpacity,
     glassStrength, setGlassStrength,
     glassBlur, setGlassBlur,
-    trackTheme
+    customWallpaper, trackTheme
   } = useThemeStore();
   const { getCacheStats, clearCache } = useCacheStore();
 
@@ -76,6 +87,16 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
   const [bgUrl, setBgUrl] = useState('');
   const [statusText, setStatusText] = useState(user?.status || '');
   const [bioText, setBioText] = useState(user?.bio || '');
+  const [profileColor, setProfileColor] = useState(user?.profileColor || '');
+  const [nicknameFont, setNicknameFont] = useState<NicknameFont>(user?.nicknameFont || 'default');
+  const [nicknameEffect, setNicknameEffect] = useState<NicknameEffect>(user?.nicknameEffect || 'none');
+  const [discord, setDiscord] = useState(user?.discord || '');
+  const [telegram, setTelegram] = useState(user?.telegram || '');
+  const [website, setWebsite] = useState(user?.website || '');
+  const [pinnedTrackId, setPinnedTrackId] = useState(user?.pinnedTrackId || '');
+  const [pinnedTrackTitle, setPinnedTrackTitle] = useState(user?.pinnedTrackTitle || '');
+  const [pinnedTrackArtist, setPinnedTrackArtist] = useState(user?.pinnedTrackArtist || '');
+  const [pinnedTrackCover, setPinnedTrackCover] = useState(user?.pinnedTrackCover || '');
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const focusedFieldRef = useRef<string | null>(null);
   const autoSaveTimerRef = useRef<any>(null);
@@ -89,68 +110,46 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
   const [pointerDragItem, setPointerDragItem] = useState<MediaLibraryItem | null>(null);
   const [pointerDragPos, setPointerDragPos] = useState<{ x: number; y: number } | null>(null);
   const [pointerHoverSlot, setPointerHoverSlot] = useState<number | null>(null);
-  const currentHoverSlotRef = useRef<number | null>(null);
 
   const handleStartPointerDrag = (e: React.PointerEvent, item: MediaLibraryItem) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('button')) return;
-
     e.preventDefault();
     setPointerDragItem(item);
     setPointerDragPos({ x: e.clientX, y: e.clientY });
-    currentHoverSlotRef.current = null;
-
-    let lastX = e.clientX;
-    let lastY = e.clientY;
 
     const onPointerMove = (moveEv: PointerEvent) => {
-      lastX = moveEv.clientX;
-      lastY = moveEv.clientY;
       setPointerDragPos({ x: moveEv.clientX, y: moveEv.clientY });
 
       const elem = document.elementFromPoint(moveEv.clientX, moveEv.clientY);
       const slotEl = elem?.closest('[data-slot-idx]');
       if (slotEl) {
         const sIdx = parseInt(slotEl.getAttribute('data-slot-idx') || '-1', 10);
-        const resolved = sIdx >= 0 ? sIdx : null;
-        setPointerHoverSlot(resolved);
-        currentHoverSlotRef.current = resolved;
+        setPointerHoverSlot(sIdx >= 0 ? sIdx : null);
       } else {
         setPointerHoverSlot(null);
-        currentHoverSlotRef.current = null;
       }
     };
 
-    const onPointerEnd = (upEv: PointerEvent) => {
+    const onPointerUp = (upEv: PointerEvent) => {
       window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerEnd);
-      window.removeEventListener('pointercancel', onPointerEnd);
+      window.removeEventListener('pointerup', onPointerUp);
 
-      const clientX = upEv.clientX ?? lastX;
-      const clientY = upEv.clientY ?? lastY;
-
-      let targetIdx: number | null = null;
-      const elem = document.elementFromPoint(clientX, clientY);
+      const elem = document.elementFromPoint(upEv.clientX, upEv.clientY);
       const slotEl = elem?.closest('[data-slot-idx]');
       if (slotEl) {
-        targetIdx = parseInt(slotEl.getAttribute('data-slot-idx') || '-1', 10);
-      }
-      if (targetIdx === null || isNaN(targetIdx) || targetIdx < 0) {
-        targetIdx = currentHoverSlotRef.current;
-      }
-
-      if (targetIdx !== null && targetIdx >= 0 && targetIdx < 5) {
-        setSlotMedia(targetIdx, item);
+        const sIdx = parseInt(slotEl.getAttribute('data-slot-idx') || '-1', 10);
+        if (sIdx >= 0 && sIdx < 5) {
+          setSlotMedia(sIdx, item);
+        }
       }
       setPointerDragItem(null);
       setPointerDragPos(null);
       setPointerHoverSlot(null);
-      currentHoverSlotRef.current = null;
     };
 
-    window.addEventListener('pointermove', onPointerMove, { passive: false });
-    window.addEventListener('pointerup', onPointerEnd);
-    window.addEventListener('pointercancel', onPointerEnd);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
   };
 
   // Interface Settings States
@@ -210,75 +209,8 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
 
-  // Mobile file picker refs
-  const mediaFileInputRef = useRef<HTMLInputElement>(null);
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
-  const bannerFileInputRef = useRef<HTMLInputElement>(null);
-  const targetSlotRef = useRef<number | null>(null);
-
-  // Yandex Token input & Device Auth state
+  // Yandex Token input
   const [yaInputToken, setYaInputToken] = useState('');
-  interface DeviceCodeInfo {
-    device_code: string;
-    user_code: string;
-    verification_url: string;
-    expires_in: number;
-    interval: number;
-  }
-  const [deviceAuthInfo, setDeviceAuthInfo] = useState<DeviceCodeInfo | null>(null);
-  const [isGettingCode, setIsGettingCode] = useState(false);
-  const [isCopiedCode, setIsCopiedCode] = useState(false);
-  const [showManualYaInput, setShowManualYaInput] = useState(false);
-  const [yaAuthError, setYaAuthError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    listen<string>('yandex-token', (event) => {
-      if (event.payload) {
-        setYandexToken(event.payload);
-        setDeviceAuthInfo(null);
-        setIsGettingCode(false);
-      }
-    }).then(fn => { unlisten = fn; }).catch(() => {});
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [setYandexToken]);
-
-  const handleStartYandexDeviceAuth = async () => {
-    setIsGettingCode(true);
-    setYaAuthError(null);
-    try {
-      const res = await invoke<DeviceCodeInfo>('start_yandex_oauth');
-      setDeviceAuthInfo(res);
-      if (res.user_code) {
-        const fullUrl = `https://oauth.yandex.ru/device?user_code=${res.user_code}`;
-        try {
-          await openUrl(fullUrl);
-        } catch {
-          window.open(fullUrl, '_blank');
-        }
-      }
-    } catch (e: any) {
-      console.warn('Invoke start_yandex_oauth failed, trying fetch fallback:', e);
-      try {
-        const resp = await fetch('https://oauth.yandex.ru/device/code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'client_id=23cabbbdc6cd418abb4b39c32c41195d'
-        });
-        if (!resp.ok) throw new Error(await resp.text());
-        const data = await resp.json();
-        setDeviceAuthInfo(data);
-        const fullUrl = `https://oauth.yandex.ru/device?user_code=${data.user_code}`;
-        try { await openUrl(fullUrl); } catch { window.open(fullUrl, '_blank'); }
-      } catch (err: any) {
-        setYaAuthError(err?.message || 'Не удалось получить код устройства');
-      }
-    } finally {
-      setIsGettingCode(false);
-    }
-  };
 
   useEffect(() => {
     if (generalSubTab === 'storage' && mainTab === 'general') {
@@ -291,7 +223,17 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     avatarUrl,
     bannerUrl,
     statusText,
-    bioText
+    bioText,
+    profileColor,
+    nicknameFont,
+    nicknameEffect,
+    discord,
+    telegram,
+    website,
+    pinnedTrackId,
+    pinnedTrackTitle,
+    pinnedTrackArtist,
+    pinnedTrackCover
   });
 
   useEffect(() => {
@@ -317,6 +259,40 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         setBioText(user.bio || '');
         lastSavedValuesRef.current.bioText = user.bio || '';
       }
+      if ((user.profileColor ?? '') !== profileColor) {
+        setProfileColor(user.profileColor || '');
+        lastSavedValuesRef.current.profileColor = user.profileColor || '';
+      }
+      if (user.nicknameFont && user.nicknameFont !== nicknameFont) {
+        setNicknameFont(user.nicknameFont);
+        lastSavedValuesRef.current.nicknameFont = user.nicknameFont;
+      }
+      if (user.nicknameEffect && user.nicknameEffect !== nicknameEffect) {
+        setNicknameEffect(user.nicknameEffect);
+        lastSavedValuesRef.current.nicknameEffect = user.nicknameEffect;
+      }
+      if (focusedFieldRef.current !== 'discord' && (user.discord ?? '') !== discord) {
+        setDiscord(user.discord || '');
+        lastSavedValuesRef.current.discord = user.discord || '';
+      }
+      if (focusedFieldRef.current !== 'telegram' && (user.telegram ?? '') !== telegram) {
+        setTelegram(user.telegram || '');
+        lastSavedValuesRef.current.telegram = user.telegram || '';
+      }
+      if (focusedFieldRef.current !== 'website' && (user.website ?? '') !== website) {
+        setWebsite(user.website || '');
+        lastSavedValuesRef.current.website = user.website || '';
+      }
+      if ((user.pinnedTrackId ?? '') !== pinnedTrackId) {
+        setPinnedTrackId(user.pinnedTrackId || '');
+        setPinnedTrackTitle(user.pinnedTrackTitle || '');
+        setPinnedTrackArtist(user.pinnedTrackArtist || '');
+        setPinnedTrackCover(user.pinnedTrackCover || '');
+        lastSavedValuesRef.current.pinnedTrackId = user.pinnedTrackId || '';
+        lastSavedValuesRef.current.pinnedTrackTitle = user.pinnedTrackTitle || '';
+        lastSavedValuesRef.current.pinnedTrackArtist = user.pinnedTrackArtist || '';
+        lastSavedValuesRef.current.pinnedTrackCover = user.pinnedTrackCover || '';
+      }
     }
   }, [user]);
 
@@ -337,7 +313,17 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     avatarUrl,
     bannerUrl,
     statusText,
-    bioText
+    bioText,
+    profileColor,
+    nicknameFont,
+    nicknameEffect,
+    discord,
+    telegram,
+    website,
+    pinnedTrackId,
+    pinnedTrackTitle,
+    pinnedTrackArtist,
+    pinnedTrackCover
   });
 
   useEffect(() => {
@@ -346,9 +332,19 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       avatarUrl,
       bannerUrl,
       statusText,
-      bioText
+      bioText,
+      profileColor,
+      nicknameFont,
+      nicknameEffect,
+      discord,
+      telegram,
+      website,
+      pinnedTrackId,
+      pinnedTrackTitle,
+      pinnedTrackArtist,
+      pinnedTrackCover
     };
-  }, [nickname, avatarUrl, bannerUrl, statusText, bioText]);
+  }, [nickname, avatarUrl, bannerUrl, statusText, bioText, profileColor, nicknameFont, nicknameEffect, discord, telegram, website, pinnedTrackId, pinnedTrackTitle, pinnedTrackArtist, pinnedTrackCover]);
 
   const flushSaveProfile = useCallback(async (
     overrides?: Partial<CloudUser>,
@@ -361,13 +357,33 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     const activeBanner = overrides?.banner !== undefined ? overrides.banner : current.bannerUrl.trim();
     const activeStatus = overrides?.status !== undefined ? overrides.status : current.statusText.trim();
     const activeBio = overrides?.bio !== undefined ? overrides.bio : current.bioText.trim();
+    const activeColor = overrides?.profileColor !== undefined ? overrides.profileColor : current.profileColor;
+    const activeFont = overrides?.nicknameFont !== undefined ? overrides.nicknameFont : current.nicknameFont;
+    const activeEffect = overrides?.nicknameEffect !== undefined ? overrides.nicknameEffect : current.nicknameEffect;
+    const activeDiscord = overrides?.discord !== undefined ? overrides.discord : current.discord.trim();
+    const activeTelegram = overrides?.telegram !== undefined ? overrides.telegram : current.telegram.trim();
+    const activeWebsite = overrides?.website !== undefined ? overrides.website : current.website.trim();
+    const activePinnedId = overrides?.pinnedTrackId !== undefined ? overrides.pinnedTrackId : current.pinnedTrackId;
+    const activePinnedTitle = overrides?.pinnedTrackTitle !== undefined ? overrides.pinnedTrackTitle : current.pinnedTrackTitle;
+    const activePinnedArtist = overrides?.pinnedTrackArtist !== undefined ? overrides.pinnedTrackArtist : current.pinnedTrackArtist;
+    const activePinnedCover = overrides?.pinnedTrackCover !== undefined ? overrides.pinnedTrackCover : current.pinnedTrackCover;
 
     lastSavedValuesRef.current = {
       nickname: activeName || '',
       avatarUrl: activeAvatar || '',
       bannerUrl: activeBanner || '',
       statusText: activeStatus || '',
-      bioText: activeBio || ''
+      bioText: activeBio || '',
+      profileColor: activeColor || '',
+      nicknameFont: activeFont || 'default',
+      nicknameEffect: activeEffect || 'none',
+      discord: activeDiscord || '',
+      telegram: activeTelegram || '',
+      website: activeWebsite || '',
+      pinnedTrackId: activePinnedId || '',
+      pinnedTrackTitle: activePinnedTitle || '',
+      pinnedTrackArtist: activePinnedArtist || '',
+      pinnedTrackCover: activePinnedCover || ''
     };
 
     const profileFields: any = {};
@@ -376,17 +392,21 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     if (activeBanner !== undefined) profileFields.banner = activeBanner;
     if (activeStatus !== undefined) profileFields.status = activeStatus;
     if (activeBio !== undefined) profileFields.bio = activeBio;
+    if (activeColor !== undefined) profileFields.profileColor = activeColor;
+    if (activeFont !== undefined) profileFields.nicknameFont = activeFont;
+    if (activeEffect !== undefined) profileFields.nicknameEffect = activeEffect;
+    if (activeDiscord !== undefined) profileFields.discord = activeDiscord;
+    if (activeTelegram !== undefined) profileFields.telegram = activeTelegram;
+    if (activeWebsite !== undefined) profileFields.website = activeWebsite;
+    if (activePinnedId !== undefined) profileFields.pinnedTrackId = activePinnedId;
+    if (activePinnedTitle !== undefined) profileFields.pinnedTrackTitle = activePinnedTitle;
+    if (activePinnedArtist !== undefined) profileFields.pinnedTrackArtist = activePinnedArtist;
+    if (activePinnedCover !== undefined) profileFields.pinnedTrackCover = activePinnedCover;
     if (blobs?.avatarBlob) profileFields.avatarBlob = blobs.avatarBlob;
     if (blobs?.bannerBlob) profileFields.bannerBlob = blobs.bannerBlob;
 
-    // Immediately update local store with visual url
-    useAuthStore.getState().updateUser({
-      name: profileFields.name,
-      avatar: profileFields.avatar,
-      banner: profileFields.banner,
-      status: profileFields.status,
-      bio: profileFields.bio
-    });
+    // Immediately update local store
+    useAuthStore.getState().updateUser(profileFields);
 
     setIsAutoSaving(true);
     try {
@@ -411,7 +431,14 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       avatarUrl === saved.avatarUrl &&
       bannerUrl === saved.bannerUrl &&
       statusText === saved.statusText &&
-      bioText === saved.bioText
+      bioText === saved.bioText &&
+      profileColor === saved.profileColor &&
+      nicknameFont === saved.nicknameFont &&
+      nicknameEffect === saved.nicknameEffect &&
+      discord === saved.discord &&
+      telegram === saved.telegram &&
+      website === saved.website &&
+      pinnedTrackId === saved.pinnedTrackId
     ) {
       return;
     }
@@ -430,72 +457,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [nickname, avatarUrl, bannerUrl, statusText, bioText, flushSaveProfile]);
-
-  const handleMediaFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    Array.from(files).forEach((file) => {
-      const isVid = file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name);
-      const isG = file.type === 'image/gif' || /\.gif$/i.test(file.name);
-      const reader = new FileReader();
-      reader.onload = () => {
-        const resultUrl = reader.result as string;
-        const newItem: MediaLibraryItem = {
-          id: 'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-          name: file.name,
-          url: resultUrl,
-          type: isVid ? 'video' : (isG ? 'gif' : 'image'),
-          createdAt: Date.now()
-        };
-        addMediaItem(newItem);
-        if (targetSlotRef.current !== null) {
-          setSlotMedia(targetSlotRef.current, newItem);
-          targetSlotRef.current = null;
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
-  };
-
-  const handleAvatarFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const resultUrl = reader.result as string;
-      setAvatarUrl(resultUrl);
-      useAuthStore.getState().updateUser({ avatar: resultUrl });
-      flushSaveProfile({ avatar: resultUrl }, { avatarBlob: file });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-
-  const handleBannerFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const resultUrl = reader.result as string;
-      setBannerUrl(resultUrl);
-      useAuthStore.getState().updateUser({ banner: resultUrl });
-      flushSaveProfile({ banner: resultUrl }, { bannerBlob: file });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
+  }, [nickname, avatarUrl, bannerUrl, statusText, bioText, profileColor, nicknameFont, nicknameEffect, discord, telegram, website, pinnedTrackId, flushSaveProfile]);
 
   const handleSelectFile = async (setter: (val: string) => void, field?: 'avatar' | 'banner') => {
-    if (field === 'avatar') {
-      avatarFileInputRef.current?.click();
-      return;
-    }
-    if (field === 'banner') {
-      bannerFileInputRef.current?.click();
-      return;
-    }
     try {
       const selected = await open({
         multiple: false,
@@ -504,14 +468,55 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       if (selected && typeof selected === 'string') {
         const safeUrl = convertFileSrc(selected);
         setter(safeUrl);
+
+        let blob: Blob | undefined;
+        try {
+          const fileBytes = await readFile(selected);
+          const ext = selected.split('.').pop()?.toLowerCase() || 'jpg';
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          blob = new Blob([fileBytes], { type: mime });
+        } catch (e) {
+          console.warn('Could not read image file directly via plugin-fs:', e);
+        }
+
+        if (field) {
+          useAuthStore.getState().updateUser({ [field]: safeUrl });
+          const blobPayload = field === 'avatar' ? { avatarBlob: blob } : { bannerBlob: blob };
+          flushSaveProfile({ [field]: safeUrl }, blobPayload);
+        }
       }
     } catch (err) {
-      console.warn('Native open failed:', err);
+      console.error(err);
     }
   };
 
   const handlePickLocalMedia = async () => {
-    mediaFileInputRef.current?.click();
+    try {
+      const selected = await open({
+        multiple: true,
+        filters: [
+          { name: 'Медиа (Изображения, GIF, Видео)', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'mov'] }
+        ]
+      });
+      if (selected) {
+        const files = Array.isArray(selected) ? selected : [selected];
+        files.forEach(filePath => {
+          const safeUrl = convertFileSrc(filePath);
+          const isVid = isVideoUrl(filePath);
+          const isG = filePath.toLowerCase().endsWith('.gif');
+          const name = filePath.split(/[/\\]/).pop() || 'Медиа';
+          addMediaItem({
+            id: 'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+            name,
+            url: safeUrl,
+            type: isVid ? 'video' : (isG ? 'gif' : 'image'),
+            createdAt: Date.now()
+          });
+        });
+      }
+    } catch (err) {
+      console.error('File pick error:', err);
+    }
   };
 
   const handleAddMediaUrl = () => {
@@ -519,47 +524,46 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
     if (!raw) return;
     const isVid = isVideoUrl(raw);
     const isG = raw.toLowerCase().includes('.gif');
-    const newItem: MediaLibraryItem = {
+    addMediaItem({
       id: 'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       name: isVid ? 'Видео' : (isG ? 'GIF' : 'Изображение'),
       url: raw,
       type: isVid ? 'video' : (isG ? 'gif' : 'image'),
       createdAt: Date.now()
-    };
-    addMediaItem(newItem);
-    if (targetSlotRef.current !== null) {
-      setSlotMedia(targetSlotRef.current, newItem);
-      targetSlotRef.current = null;
-    }
+    });
     setMediaUrlInput('');
   };
 
   return (
     <motion.aside
-      initial={{ x: '-100%', opacity: 0 }}
+      initial={{ x: '-105%', opacity: 0 }}
       animate={{ x: '0%', opacity: 1 }}
-      exit={{ x: '-100%', opacity: 0 }}
-      transition={
-        typeof window !== 'undefined' && window.innerWidth < 768
-          ? { duration: 0.22, ease: [0.16, 1, 0.3, 1] }
-          : {
-              type: 'spring',
-              stiffness: 240,
-              damping: 30,
-              mass: 0.85
-            }
-      }
-      className="fixed sm:absolute inset-0 sm:top-3 sm:bottom-3 sm:left-3 sm:right-auto w-full sm:w-[55%] sm:min-w-[560px] sm:max-w-[720px] rounded-none sm:rounded-[32px] border-0 sm:border z-[90] flex flex-col overflow-hidden select-none text-[var(--text-main)] font-sans"
+      exit={{ x: '-105%', opacity: 0 }}
+      transition={{
+        type: 'spring',
+        stiffness: 240,
+        damping: 30,
+        mass: 0.85
+      }}
+      className="absolute top-3 bottom-3 left-3 w-[55%] min-w-[560px] max-w-[720px] rounded-[32px] border z-50 flex flex-col overflow-hidden select-none text-[var(--text-main)] font-sans"
       style={{ 
-        backgroundColor: 'var(--bg-surface)',
-        borderColor: 'var(--border-main)',
-        boxShadow: '0 30px 90px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06)'
+        backgroundColor: transparencyEnabled && customWallpaper
+          ? `rgba(14, 14, 18, ${Math.max(0.12, (windowOpacity / 100) * 0.85)})`
+          : 'var(--bg-surface)',
+        backdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0
+          ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
+          : undefined,
+        WebkitBackdropFilter: transparencyEnabled && customWallpaper && glassBlur > 0
+          ? `blur(${glassBlur}px) saturate(${100 + glassStrength * 1.5}%)`
+          : undefined,
+        borderColor: transparencyEnabled ? `rgba(255, 255, 255, ${0.08 + (glassStrength / 100) * 0.16})` : 'var(--border-main)',
+        boxShadow: `0 30px 90px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,${0.08 + (glassStrength / 100) * 0.20})`
       }}
       onClick={(e) => e.stopPropagation()}
     >
       {/* 1. TOP HEADER (Main Navigation Tabs + Close Button) */}
-      <div className="flex items-center justify-between px-4 sm:px-8 pt-16 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--border-main)] shrink-0 gap-3">
-        <div className="flex items-center gap-4 sm:gap-7 overflow-x-auto scrollbar-hide py-1 flex-1 min-w-0">
+      <div className="flex items-center justify-between px-8 pt-6 pb-4 border-b border-[var(--border-main)] shrink-0">
+        <div className="flex items-center gap-7 overflow-x-auto scrollbar-hide py-1">
           {[
             { id: 'profile', label: t('tab_account') },
             { id: 'general', label: t('tab_general') },
@@ -572,7 +576,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
               <button
                 key={tab.id}
                 onClick={() => setMainTab(tab.id as MainTab)}
-                className={`text-[14px] sm:text-[15px] font-bold transition-all relative pb-3 cursor-pointer whitespace-nowrap tracking-tight ${
+                className={`text-[15px] font-bold transition-all relative pb-3 cursor-pointer whitespace-nowrap tracking-tight ${
                   isActive ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-main)]'
                 }`}
               >
@@ -606,7 +610,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       </div>
 
       {/* 2. SUBTABS CAPSULE BAR (Matching Dotify 'tr' component) */}
-      <div className="px-4 sm:px-8 pt-3 sm:pt-5 pb-2 shrink-0 overflow-x-auto scrollbar-hide">
+      <div className="px-8 pt-5 pb-2 shrink-0">
         {mainTab === 'profile' && (
           <div className="flex items-center p-1 bg-[var(--bg-surface)] border border-[var(--border-main)] rounded-full w-full gap-0.5">
             {[
@@ -702,7 +706,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
       </div>
 
       {/* 3. MAIN SCROLLABLE CONTENT */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide px-4 sm:px-8 py-4 sm:py-5 space-y-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide px-8 py-5 space-y-6">
 
         {/* ===================== TAB 1: ПРОФИЛЬ ===================== */}
         {mainTab === 'profile' && (
@@ -712,6 +716,13 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                 {/* Hero Preview Card - Compact and Clean */}
                 <div 
                   className="relative h-[96px] w-full rounded-2xl p-4 border border-[var(--border-main)] bg-[var(--bg-surface)] overflow-hidden flex items-center justify-between gap-4 shadow-sm transition-all"
+                  style={{
+                    background: bannerUrl 
+                      ? `url(${bannerUrl}) center/cover no-repeat`
+                      : profileColor 
+                        ? `linear-gradient(135deg, ${profileColor} 0%, rgba(20, 20, 28, 0.95) 100%)`
+                        : undefined
+                  }}
                 >
                   {bannerUrl && (
                     <div 
@@ -736,7 +747,13 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                       </button>
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-base font-bold text-[var(--text-main)] tracking-tight leading-snug truncate">
+                      <h3 
+                        className="text-base font-bold text-[var(--text-main)] tracking-tight leading-snug truncate"
+                        style={{
+                          fontFamily: getNicknameFontFamily(nicknameFont),
+                          ...getNicknameEffectStyle(nicknameEffect)
+                        }}
+                      >
                         {nickname || 'User'}
                       </h3>
                       <p className="text-xs text-[var(--text-secondary)] font-mono truncate">
@@ -933,6 +950,267 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                         {bioText.length}/150
                       </span>
                     </div>
+                  </div>
+
+                  {/* Цвет профиля */}
+                  <div className="space-y-2">
+                    <label className="text-[13px] font-bold text-white tracking-tight block">Цвет профиля</label>
+                    <div className="flex items-center gap-2.5 flex-wrap p-3 rounded-2xl bg-white/[0.02] border border-white/10">
+                      {PROFILE_COLORS.map((col) => {
+                        const isSelected = (profileColor || '') === col.value;
+                        return (
+                          <button
+                            key={col.id}
+                            type="button"
+                            onClick={() => {
+                              setProfileColor(col.value);
+                              flushSaveProfile({ profileColor: col.value });
+                            }}
+                            className={`w-8 h-8 rounded-full border-2 transition-all cursor-pointer relative flex items-center justify-center ${
+                              isSelected ? 'scale-110 border-white ring-2 ring-white/40' : 'border-white/20 hover:scale-105 hover:border-white/50'
+                            }`}
+                            style={{ backgroundColor: col.value || '#18181f' }}
+                            title={col.label}
+                          >
+                            {!col.value && <span className="text-[10px] text-white/50 font-bold">∅</span>}
+                            {isSelected && <Check size={14} className={col.id === 'yellow' ? 'text-black' : 'text-white'} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Шрифт никнейма */}
+                  <div className="space-y-2">
+                    <label className="text-[13px] font-bold text-white tracking-tight block">Шрифт никнейма</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {NICKNAME_FONTS.map((f) => {
+                        const isSelected = nicknameFont === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => {
+                              setNicknameFont(f.id);
+                              flushSaveProfile({ nicknameFont: f.id });
+                            }}
+                            className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between h-20 ${
+                              isSelected
+                                ? 'bg-white/[0.08] border-white/40 shadow-md ring-1 ring-white/30'
+                                : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <span className="text-[11px] font-semibold text-white/60">{f.label}</span>
+                            <span 
+                              className="text-base text-white truncate"
+                              style={{ fontFamily: getNicknameFontFamily(f.id) }}
+                            >
+                              Aa Никнейм
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Эффект никнейма */}
+                  <div className="space-y-2">
+                    <label className="text-[13px] font-bold text-white tracking-tight block">Эффект никнейма</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {NICKNAME_EFFECTS.map((eff) => {
+                        const isSelected = nicknameEffect === eff.id;
+                        return (
+                          <button
+                            key={eff.id}
+                            type="button"
+                            onClick={() => {
+                              setNicknameEffect(eff.id);
+                              flushSaveProfile({ nicknameEffect: eff.id });
+                            }}
+                            className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between h-20 ${
+                              isSelected
+                                ? 'bg-white/[0.08] border-white/40 shadow-md ring-1 ring-white/30'
+                                : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <span className="text-[11px] font-semibold text-white/60">{eff.label}</span>
+                            <span 
+                              className="text-base text-white truncate"
+                              style={getNicknameEffectStyle(eff.id)}
+                            >
+                              Aa Никнейм
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Интеграции */}
+                  <div className="space-y-3 pt-2">
+                    <label className="text-[13px] font-bold text-white tracking-tight block">Интеграции</label>
+                    
+                    {/* Discord */}
+                    <div className="space-y-1.5">
+                      <div className="relative flex items-center">
+                        <div className="absolute left-3.5 text-[#5865F2]">
+                          <DiscordIcon size={16} />
+                        </div>
+                        <input
+                          type="text"
+                          maxLength={64}
+                          value={discord}
+                          onChange={(e) => setDiscord(e.target.value)}
+                          onFocus={() => { focusedFieldRef.current = 'discord'; }}
+                          onBlur={() => {
+                            focusedFieldRef.current = null;
+                            flushSaveProfile({ discord: discord.trim() });
+                          }}
+                          placeholder="Discord тег или никнейм"
+                          className="w-full h-11 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 focus:border-white/35 focus:outline-none pl-10 pr-14 text-sm text-white placeholder-white/25 transition-all font-mono"
+                        />
+                        <span className="absolute right-4 text-xs text-white/40 font-mono select-none">
+                          {discord.length}/64
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Telegram */}
+                    <div className="space-y-1.5">
+                      <div className="relative flex items-center">
+                        <div className="absolute left-3.5 text-[#229ED9]">
+                          <Send size={15} />
+                        </div>
+                        <input
+                          type="text"
+                          maxLength={64}
+                          value={telegram}
+                          onChange={(e) => setTelegram(e.target.value)}
+                          onFocus={() => { focusedFieldRef.current = 'telegram'; }}
+                          onBlur={() => {
+                            focusedFieldRef.current = null;
+                            flushSaveProfile({ telegram: telegram.trim() });
+                          }}
+                          placeholder="Telegram @username"
+                          className="w-full h-11 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 focus:border-white/35 focus:outline-none pl-10 pr-14 text-sm text-white placeholder-white/25 transition-all font-mono"
+                        />
+                        <span className="absolute right-4 text-xs text-white/40 font-mono select-none">
+                          {telegram.length}/64
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Website */}
+                    <div className="space-y-1.5">
+                      <div className="relative flex items-center">
+                        <div className="absolute left-3.5 text-white/50">
+                          <Globe size={15} />
+                        </div>
+                        <input
+                          type="text"
+                          maxLength={256}
+                          value={website}
+                          onChange={(e) => setWebsite(e.target.value)}
+                          onFocus={() => { focusedFieldRef.current = 'website'; }}
+                          onBlur={() => {
+                            focusedFieldRef.current = null;
+                            flushSaveProfile({ website: website.trim() });
+                          }}
+                          placeholder="Сайт или ссылка (https://...)"
+                          className="w-full h-11 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 focus:border-white/35 focus:outline-none pl-10 pr-16 text-sm text-white placeholder-white/25 transition-all"
+                        />
+                        <span className="absolute right-4 text-xs text-white/40 font-mono select-none">
+                          {website.length}/256
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Закреплено */}
+                  <div className="space-y-2 pt-2">
+                    <label className="text-[13px] font-bold text-white tracking-tight flex items-center gap-1.5">
+                      <Pin size={14} className="text-[var(--accent)]" />
+                      <span>Закреплено</span>
+                    </label>
+
+                    {pinnedTrackTitle ? (
+                      <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-11 h-11 rounded-xl bg-white/10 overflow-hidden shrink-0">
+                            {pinnedTrackCover ? (
+                              <img src={pinnedTrackCover} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Music size={18} className="m-auto text-white/40 h-full" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{pinnedTrackTitle}</div>
+                            <div className="text-[11px] text-white/50 truncate">{pinnedTrackArtist}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPinnedTrackId('');
+                            setPinnedTrackTitle('');
+                            setPinnedTrackArtist('');
+                            setPinnedTrackCover('');
+                            flushSaveProfile({
+                              pinnedTrackId: '',
+                              pinnedTrackTitle: '',
+                              pinnedTrackArtist: '',
+                              pinnedTrackCover: ''
+                            });
+                          }}
+                          className="p-2 rounded-xl bg-white/[0.06] hover:bg-red-500/20 text-white/60 hover:text-red-400 transition-all cursor-pointer"
+                          title="Открепить трек"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-white/50">
+                          Закрепите любимый трек в профиле. Выберите из недавно прослушанных:
+                        </p>
+                        {usePlayerStore.getState().history && usePlayerStore.getState().history.length > 0 ? (
+                          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                            {usePlayerStore.getState().history.slice(0, 5).map((tr) => (
+                              <button
+                                key={tr.id}
+                                type="button"
+                                onClick={() => {
+                                  const cov = tr.customCoverPath || tr.originalCoverUrl || '';
+                                  setPinnedTrackId(tr.id);
+                                  setPinnedTrackTitle(tr.title);
+                                  setPinnedTrackArtist(tr.artist);
+                                  setPinnedTrackCover(cov);
+                                  flushSaveProfile({
+                                    pinnedTrackId: tr.id,
+                                    pinnedTrackTitle: tr.title,
+                                    pinnedTrackArtist: tr.artist,
+                                    pinnedTrackCover: cov
+                                  });
+                                }}
+                                className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 shrink-0 text-left transition-all cursor-pointer max-w-[180px]"
+                              >
+                                {(tr.customCoverPath || tr.originalCoverUrl) && (
+                                  <img src={(tr.customCoverPath || tr.originalCoverUrl)!} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                                )}
+                                <div className="min-w-0">
+                                  <div className="text-[11px] font-bold text-white truncate">{tr.title}</div>
+                                  <div className="text-[10px] text-white/50 truncate">{tr.artist}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center text-xs text-white/40">
+                            Включите любой трек, чтобы закрепить его в профиле
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -1381,81 +1659,75 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                         className="space-y-5 overflow-hidden pt-1"
                       >
                         {/* 1. Непрозрачность */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 py-1">
+                        <div className="flex items-center justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[13.5px] font-bold text-white">Непрозрачность</h5>
                             <p className="text-xs text-white/50 mt-0.5">Прозрачность фона окна</p>
                           </div>
-                          <div className="flex items-center gap-3 w-full sm:w-56 shrink-0">
-                            <div className="relative flex-1 py-3 flex items-center touch-none">
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={windowOpacity}
-                                onChange={(e) => setWindowOpacity(parseInt(e.target.value, 10))}
-                                className="w-full h-2 sm:h-1.5 bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 sm:[&::-webkit-slider-thumb]:w-3.5 sm:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-black/30 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                                style={{
-                                  background: `linear-gradient(to right, var(--accent) calc((100% - 14px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 7px), rgba(255,255,255,0.12) calc((100% - 14px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 7px))`
-                                }}
-                              />
-                            </div>
-                            <span className="w-12 text-right text-xs font-mono font-bold text-white/90 shrink-0">
+                          <div className="flex items-center gap-3.5 w-52 shrink-0">
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={windowOpacity}
+                              onChange={(e) => setWindowOpacity(parseInt(e.target.value, 10))}
+                              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+                              style={{
+                                background: `linear-gradient(to right, var(--accent) calc((100% - 10px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 5px), rgba(255,255,255,0.1) calc((100% - 10px) * ${Math.max(0, Math.min(100, windowOpacity)) / 100} + 5px))`
+                              }}
+                            />
+                            <span className="w-10 text-right text-xs font-mono font-bold text-white/80 shrink-0">
                               {windowOpacity}%
                             </span>
                           </div>
                         </div>
 
                         {/* 2. Сила стекла */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 py-1">
+                        <div className="flex items-center justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[13.5px] font-bold text-white">Сила стекла</h5>
                             <p className="text-xs text-white/50 mt-0.5">Интенсивность отражения, насыщенности и эффекта акрила</p>
                           </div>
-                          <div className="flex items-center gap-3 w-full sm:w-56 shrink-0">
-                            <div className="relative flex-1 py-3 flex items-center touch-none">
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={glassStrength}
-                                onChange={(e) => setGlassStrength(parseInt(e.target.value, 10))}
-                                className="w-full h-2 sm:h-1.5 bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 sm:[&::-webkit-slider-thumb]:w-3.5 sm:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-black/30 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                                style={{
-                                  background: `linear-gradient(to right, var(--accent) calc((100% - 14px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 7px), rgba(255,255,255,0.12) calc((100% - 14px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 7px))`
-                                }}
-                              />
-                            </div>
-                            <span className="w-12 text-right text-xs font-mono font-bold text-white/90 shrink-0">
+                          <div className="flex items-center gap-3.5 w-52 shrink-0">
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={glassStrength}
+                              onChange={(e) => setGlassStrength(parseInt(e.target.value, 10))}
+                              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+                              style={{
+                                background: `linear-gradient(to right, var(--accent) calc((100% - 10px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 5px), rgba(255,255,255,0.1) calc((100% - 10px) * ${Math.max(0, Math.min(100, glassStrength)) / 100} + 5px))`
+                              }}
+                            />
+                            <span className="w-10 text-right text-xs font-mono font-bold text-white/80 shrink-0">
                               {glassStrength}%
                             </span>
                           </div>
                         </div>
 
                         {/* 3. Размытие стекла */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 py-1">
+                        <div className="flex items-center justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[13.5px] font-bold text-white">Размытие стекла</h5>
                             <p className="text-xs text-white/50 mt-0.5">Радиус глубокого акрилового размытия (0–80px)</p>
                           </div>
-                          <div className="flex items-center gap-3 w-full sm:w-56 shrink-0">
-                            <div className="relative flex-1 py-3 flex items-center touch-none">
-                              <input
-                                type="range"
-                                min="0"
-                                max="80"
-                                step="1"
-                                value={glassBlur}
-                                onChange={(e) => setGlassBlur(parseInt(e.target.value, 10))}
-                                className="w-full h-2 sm:h-1.5 bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 sm:[&::-webkit-slider-thumb]:w-3.5 sm:[&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-black/30 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                                style={{
-                                  background: `linear-gradient(to right, var(--accent) calc((100% - 14px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 7px), rgba(255,255,255,0.12) calc((100% - 14px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 7px))`
-                                }}
-                              />
-                            </div>
-                            <span className="w-12 text-right text-xs font-mono font-bold text-white/90 shrink-0">
+                          <div className="flex items-center gap-3.5 w-52 shrink-0">
+                            <input
+                              type="range"
+                              min="0"
+                              max="80"
+                              step="1"
+                              value={glassBlur}
+                              onChange={(e) => setGlassBlur(parseInt(e.target.value, 10))}
+                              className="w-full h-[3px] bg-white/10 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
+                              style={{
+                                background: `linear-gradient(to right, var(--accent) calc((100% - 10px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 5px), rgba(255,255,255,0.1) calc((100% - 10px) * ${Math.max(0, Math.min(100, (glassBlur / 80) * 100)) / 100} + 5px))`
+                              }}
+                            />
+                            <span className="w-10 text-right text-xs font-mono font-bold text-white/80 shrink-0">
                               {glassBlur}px
                             </span>
                           </div>
@@ -1670,21 +1942,22 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                                 />
                               )}
 
-                              {/* Controls in top right */}
-                              <div className="absolute top-1.5 right-1.5 flex items-center gap-1 z-10">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    clearSlot(slot.idx);
-                                  }}
-                                  className="p-1 rounded-lg bg-black/60 hover:bg-red-500/70 text-white/90 border border-white/10 transition-colors cursor-pointer"
-                                  title="Очистить слот"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                                <div className="flex justify-end">
+                                  <button
+                                    onClick={() => clearSlot(slot.idx)}
+                                    className="p-1 rounded-lg bg-red-500/30 hover:bg-red-500/60 text-white transition-colors cursor-pointer"
+                                    title="Очистить слот"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                                <span className="text-[10px] font-bold text-white/90 truncate bg-black/60 px-1.5 py-0.5 rounded text-center">
+                                  {slot.title}
+                                </span>
                               </div>
 
-                              <span className="absolute bottom-1.5 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[9px] font-semibold text-white/90 border border-white/10 shadow-sm">
+                              <span className="group-hover:opacity-0 transition-opacity absolute bottom-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[9px] font-semibold text-white/80 border border-white/10">
                                 {slot.title}
                               </span>
                             </>
@@ -1782,21 +2055,8 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                       {mediaLibrary.map(item => (
                         <div
                           key={item.id}
-                          draggable={true}
-                          onDragStart={(e) => {
-                            setDraggedMediaItem(item);
-                            try {
-                              e.dataTransfer.setData('text/plain', JSON.stringify(item));
-                              e.dataTransfer.setData('application/json', JSON.stringify(item));
-                            } catch {}
-                          }}
-                          onDragEnd={() => {
-                            setDraggedMediaItem(null);
-                            setDragOverSlot(null);
-                          }}
                           onPointerDown={(e) => handleStartPointerDrag(e, item)}
-                          style={{ touchAction: 'none' }}
-                          className="group relative aspect-[4/3] rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02] hover:border-white/30 cursor-grab active:cursor-grabbing transition-all shadow-sm select-none touch-none"
+                          className="group relative aspect-[4/3] rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02] hover:border-white/30 cursor-grab active:cursor-grabbing transition-all shadow-sm select-none"
                         >
                           {item.type === 'video' ? (
                             <video 
@@ -1829,7 +2089,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                               removeMediaItem(item.id);
                             }}
                             onPointerDown={(e) => e.stopPropagation()}
-                            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 hover:bg-red-500/80 text-white/80 hover:text-white transition-all cursor-pointer opacity-70 sm:opacity-0 sm:group-hover:opacity-100 z-10 shadow-md backdrop-blur-sm border border-white/10"
+                            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 hover:bg-red-500/80 text-white/80 hover:text-white transition-all cursor-pointer opacity-0 group-hover:opacity-100 z-10 shadow-md backdrop-blur-sm border border-white/10"
                             title="Удалить из библиотеки"
                           >
                             <Trash2 size={13} />
@@ -1923,7 +2183,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         {/* ===================== TAB 4: СЕРВИСЫ ===================== */}
         {mainTab === 'services' && (
           <div className="space-y-5 animate-in fade-in duration-200">
-            <div className="p-5 rounded-[22px] bg-white/[0.03] border border-white/[0.06] space-y-4 shadow-sm">
+            <div className="p-5 rounded-[22px] bg-white/[0.03] border border-white/[0.06] space-y-3 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span className="text-sm font-bold text-white">Яндекс Музыка</span>
@@ -1938,127 +2198,40 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
                   )}
                 </div>
               </div>
-
               <p className="text-xs text-white/60 leading-relaxed">
                 Авторизация дает доступ к «Моей волне», вашим плейлистам и воспроизведению в высоком качестве.
               </p>
-
-              {yandexToken ? (
-                <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-2 pt-1">
+                {yandexToken ? (
                   <button
-                    onClick={() => {
-                      setYandexToken(null);
-                      setDeviceAuthInfo(null);
-                    }}
-                    className="px-4 py-2.5 rounded-[14px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold transition-all cursor-pointer"
+                    onClick={() => setYandexToken(null)}
+                    className="px-4 py-2 rounded-[14px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold transition-all cursor-pointer"
                   >
                     Выйти из Яндекс Музыки
                   </button>
-                </div>
-              ) : (
-                <div className="space-y-4 pt-1">
-                  {!deviceAuthInfo ? (
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <button
-                        onClick={handleStartYandexDeviceAuth}
-                        disabled={isGettingCode}
-                        className="py-3 px-5 rounded-[14px] bg-[var(--accent)] hover:brightness-110 text-[var(--accent-contrast)] text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                      >
-                        {isGettingCode ? (
-                          <>
-                            <Loader2 size={16} className="animate-spin" />
-                            <span>Получаем код устройства...</span>
-                          </>
-                        ) : (
-                          <>
-                            <KeyRound size={16} />
-                            <span>Войти через код (ya.ru/device)</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-[18px] bg-white/[0.04] border border-white/[0.08] space-y-3.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] text-white/50 uppercase font-semibold block">Одноразовый код</span>
-                          <span className="text-2xl font-mono font-bold tracking-widest text-[var(--accent)] select-all mt-0.5 block">
-                            {deviceAuthInfo.user_code}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(deviceAuthInfo.user_code);
-                            setIsCopiedCode(true);
-                            setTimeout(() => setIsCopiedCode(false), 2000);
-                          }}
-                          className="px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs text-white flex items-center gap-1.5 cursor-pointer active:scale-95"
-                        >
-                          {isCopiedCode ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                          <span>{isCopiedCode ? 'Скопировано' : 'Копировать'}</span>
-                        </button>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          const url = `https://oauth.yandex.ru/device?user_code=${deviceAuthInfo.user_code}`;
-                          try { openUrl(url); } catch { window.open(url, '_blank'); }
-                        }}
-                        className="w-full py-2.5 px-4 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-contrast)] rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95"
-                      >
-                        <ExternalLink size={14} />
-                        <span>Открыть страницу ya.ru/device</span>
-                      </button>
-
-                      <div className="flex items-center gap-2 text-[11px] text-white/60 justify-center pt-1">
-                        <Loader2 size={13} className="animate-spin text-[var(--accent)]" />
-                        <span>Ожидаем подтверждения в Яндекс ID...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {yaAuthError && (
-                    <div className="text-xs text-red-400 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
-                      {yaAuthError}
-                    </div>
-                  )}
-
-                  {/* Manual token input option */}
-                  <div className="pt-2 border-t border-white/[0.06]">
+                ) : (
+                  <div className="flex-1 flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Вставьте токен Yandex..."
+                      value={yaInputToken}
+                      onChange={(e) => setYaInputToken(e.target.value)}
+                      className="flex-1 px-4 py-2 rounded-[14px] bg-white/[0.04] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/40"
+                    />
                     <button
-                      type="button"
-                      onClick={() => setShowManualYaInput(!showManualYaInput)}
-                      className="text-[11px] text-white/50 hover:text-white transition-colors"
+                      onClick={() => {
+                        if (yaInputToken.trim()) {
+                          setYandexToken(yaInputToken.trim());
+                          setYaInputToken('');
+                        }
+                      }}
+                      className="px-5 py-2 rounded-[14px] bg-white text-black text-xs font-bold hover:bg-white/90 cursor-pointer shadow-md transition-all active:scale-95"
                     >
-                      {showManualYaInput ? 'Скрыть ручной ввод токена' : 'Или ввести токен вручную'}
+                      Сохранить
                     </button>
-
-                    {showManualYaInput && (
-                      <div className="flex gap-2 mt-2">
-                        <input
-                          type="password"
-                          placeholder="y0_AgAAAA... или токен Яндекса"
-                          value={yaInputToken}
-                          onChange={(e) => setYaInputToken(e.target.value)}
-                          className="flex-1 px-4 py-2 rounded-[14px] bg-white/[0.04] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/40"
-                        />
-                        <button
-                          onClick={() => {
-                            if (yaInputToken.trim()) {
-                              setYandexToken(yaInputToken.trim());
-                              setYaInputToken('');
-                              setDeviceAuthInfo(null);
-                            }
-                          }}
-                          className="px-5 py-2 rounded-[14px] bg-white text-black text-xs font-bold hover:bg-white/90 cursor-pointer shadow-md transition-all active:scale-95"
-                        >
-                          Сохранить
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2099,29 +2272,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ onClose, initial
         </div>
       )}
 
-      {/* Hidden file inputs for reliable mobile media picking */}
-      <input
-        ref={mediaFileInputRef}
-        type="file"
-        accept="image/*,video/*,.gif"
-        multiple
-        className="hidden"
-        onChange={handleMediaFilesSelected}
-      />
-      <input
-        ref={avatarFileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleAvatarFileSelected}
-      />
-      <input
-        ref={bannerFileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleBannerFileSelected}
-      />
 
     </motion.aside>
   );
